@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from app.database import Base, engine
 from app.models import orm as _orm  # noqa: F401 — register models with Base
-from app.routers import enrichment, sessions
+from app.routers import enrichment, interview, sessions
 
 
 @asynccontextmanager
@@ -25,6 +25,7 @@ app = FastAPI(
 
 app.include_router(sessions.router)
 app.include_router(enrichment.router)
+app.include_router(interview.router)
 
 
 @app.get("/health")

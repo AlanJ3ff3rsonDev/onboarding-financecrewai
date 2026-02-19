@@ -63,6 +63,34 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-19 — T10: Interview "next question" endpoint
+
+**Status**: completed
+
+**What was done**:
+- Created `app/routers/interview.py` with `GET /api/v1/sessions/{id}/interview/next` endpoint
+  - If `interview_state` is None (first call): initializes via `create_interview()`, stores state in DB, updates status to `"interviewing"`
+  - If interview_state exists: deserializes and returns `current_question`
+  - If `phase == "complete"`: returns completion message
+  - Idempotent GET — does not advance questions; advancement happens on answer submission (T11)
+- Registered interview router in `app/main.py`
+- Added 4 route-level tests to `tests/test_interview.py`
+
+**Tests**:
+- [x] Automated: `test_get_first_question_endpoint` — new session → GET next → core_1 returned, status = "interviewing" (PASSED)
+- [x] Automated: `test_get_next_after_enrichment_endpoint` — enriched session → core_1 has pre_filled_value from enrichment (PASSED)
+- [x] Automated: `test_interview_state_persisted` — state stored in DB, repeated GET returns same question (PASSED)
+- [x] Automated: `test_interview_next_session_not_found` — 404 on nonexistent session (PASSED)
+- [x] Full suite: 35/35 tests passing (no regressions)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Manual verification with Swagger, then move to T11: Interview "submit answer" endpoint
+
+---
+
 ### 2026-02-19 — T09: LangGraph interview state + basic graph
 
 **Status**: completed

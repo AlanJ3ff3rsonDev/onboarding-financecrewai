@@ -1,8 +1,9 @@
-"""Tests for T08: Core questions data structure + T09: LangGraph interview state."""
+"""Tests for T08-T10: Core questions, LangGraph state, interview endpoints."""
 
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.models.schemas import InterviewQuestion, SmartDefaults
 from app.prompts.interview import CORE_QUESTIONS, DYNAMIC_QUESTION_BANK, SMART_DEFAULTS
@@ -179,3 +180,90 @@ async def test_enrichment_prefill_core_5_tone():
     question = InterviewQuestion.model_validate(state["current_question"])
     assert question.question_id == "core_5"
     assert question.pre_filled_value == "amigável e casual"
+
+
+# ---------- T10: Interview "next question" endpoint ----------
+
+
+def test_get_first_question_endpoint(client: TestClient) -> None:
+    """New session → GET /interview/next → returns core_1, status becomes interviewing."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["question_id"] == "core_1"
+    assert data["phase"] == "core"
+    assert data["question_type"] == "text"
+    assert data["is_required"] is True
+    assert data["supports_audio"] is True
+    assert "question_text" in data
+
+    # Verify session status updated to interviewing
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert session_resp.json()["status"] == "interviewing"
+
+
+def test_get_next_after_enrichment_endpoint(client: TestClient) -> None:
+    """Enriched session → GET /interview/next → core_1 has pre_filled_value."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Manually set enrichment_data in DB (skip actual scraping)
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+
+    db = next(app.dependency_overrides[get_db]())
+    session = db.get(OnboardingSession, session_id)
+    session.enrichment_data = {
+        "company_name": "TestCorp",
+        "products_description": "Software de cobrança inteligente",
+        "payment_methods_mentioned": "PIX, boleto e cartão",
+        "communication_tone": "profissional e empático",
+    }
+    session.status = "enriched"
+    db.commit()
+    db.close()
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["question_id"] == "core_1"
+    assert data["pre_filled_value"] == "Software de cobrança inteligente"
+    assert data["context_hint"] is not None
+
+
+def test_interview_state_persisted(client: TestClient) -> None:
+    """GET /interview/next stores interview_state in DB and is idempotent."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # First call — initializes
+    resp1 = client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    assert resp1.status_code == 200
+
+    # Verify state stored in DB
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert session_resp.json()["interview_state"] is not None
+
+    # Second call — same question (idempotent, no advancement)
+    resp2 = client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    assert resp2.status_code == 200
+    assert resp2.json()["question_id"] == resp1.json()["question_id"]
+
+
+def test_interview_next_session_not_found(client: TestClient) -> None:
+    """GET /interview/next for non-existent session → 404."""
+    resp = client.get("/api/v1/sessions/nonexistent-id/interview/next")
+    assert resp.status_code == 404

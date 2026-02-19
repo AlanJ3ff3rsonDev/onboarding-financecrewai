@@ -305,7 +305,7 @@
 **Manual tests**:
 - In Swagger: create session → (optionally enrich) → GET interview/next → see first question with options
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -786,7 +786,7 @@
 | T07 | Enrichment API endpoint | M1 | T04, T05, T06 | `done` |
 | T08 | Core questions data structure | M2 | — | `done` |
 | T09 | LangGraph interview state + basic graph | M2 | T08 | `done` |
-| T10 | Interview "next question" endpoint | M2 | T04, T09 | `pending` |
+| T10 | Interview "next question" endpoint | M2 | T04, T09 | `done` |
 | T11 | Interview "submit answer" endpoint | M2 | T10 | `pending` |
 | T12 | AI follow-up evaluation + generation | M2 | T11 | `pending` |
 | T13 | Dynamic question generation | M2 | T12 | `pending` |
