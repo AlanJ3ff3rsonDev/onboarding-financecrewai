@@ -1,0 +1,29 @@
+[project]
+name = "collectai-onboarding"
+version = "0.1.0"
+description = "CollectAI Self-Service Onboarding Backend MVP"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "pydantic",
+    "pydantic-settings",
+    "openai",
+    "langgraph",
+    "playwright",
+    "httpx",
+    "python-multipart",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: marks tests that call real external APIs (deselect with '-m \"not integration\"')",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]

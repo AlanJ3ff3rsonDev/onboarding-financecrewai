@@ -1,0 +1,1 @@
+"""Agent config generation prompt."""
