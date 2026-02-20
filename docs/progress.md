@@ -91,6 +91,19 @@ Track bugs or problems that need attention but aren't blocking current work.
 - [x] Automated: `test_confirm_defaults_wrong_phase` — POST when phase="core" → 400 (PASSED)
 - [x] Automated: `test_defaults_session_not_found` — GET/POST on nonexistent session → 404 (PASSED)
 - [x] Full suite: 71/71 tests passing (no regressions)
+- [x] Manual: Full flow via curl on uvicorn (port 8000):
+  - POST /sessions → created session
+  - GET /interview/defaults before interview → 400 "Interview not started" ✓
+  - GET /interview/next → initialized interview (core_1)
+  - Fast-forwarded session to phase="defaults" via DB
+  - GET /interview/defaults → 11 pre-filled values, confirmed=false ✓
+  - POST /interview/defaults during core phase → 400 "não concluída" ✓
+  - POST /interview/defaults with adjusted values (interval=5, attempts=15, strategy=proactive, hours=09:00-18:00) → confirmed=true, phase=complete ✓
+  - GET /interview/defaults after confirmation → confirmed=true with saved values ✓
+  - GET /sessions/{id} → status="interviewed", phase="complete", smart_defaults populated ✓
+  - POST with hours < 06:00 → 400 "horário deve estar entre 06:00 e 22:00" ✓
+  - POST with negative min_installment → 422 Pydantic validation ✓
+  - GET/POST on nonexistent session → 404 ✓
 
 **Issues found**:
 - None
