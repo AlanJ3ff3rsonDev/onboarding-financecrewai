@@ -64,6 +64,39 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T16: Audio transcription service
+
+**Status**: completed
+
+**What was done**:
+- Implemented `app/services/transcription.py` with `transcribe_audio(file_bytes, content_type) -> dict`:
+  - Validates file is not empty, not > 25 MB, and has an allowed MIME type
+  - Allowed types: audio/webm, audio/mp4, video/mp4, audio/wav, audio/x-wav, audio/mpeg, audio/mp3
+  - Uses `AsyncOpenAI` with model `gpt-4o-mini-transcribe`, language `"pt"`
+  - Retries once on `OpenAIError`, then raises `ValueError` with user-friendly message
+  - Returns `{"text": str, "duration_seconds": float}`
+- Added `TranscriptionResponse` Pydantic schema to `app/models/schemas.py`
+- Created `tests/test_audio.py` with 7 tests (all mock OpenAI)
+
+**Tests**:
+- [x] Automated: `test_transcribe_valid_audio` — valid bytes + audio/webm → text + duration returned, correct API params (PASSED)
+- [x] Automated: `test_transcribe_invalid_format` — text/plain → ValueError "Formato não suportado" (PASSED)
+- [x] Automated: `test_transcribe_too_large` — >25MB → ValueError "excede o limite" (PASSED)
+- [x] Automated: `test_transcribe_empty_bytes` — empty bytes → ValueError "vazio" (PASSED)
+- [x] Automated: `test_transcribe_api_error_retries` — first call fails, second succeeds → returns text (PASSED)
+- [x] Automated: `test_transcribe_api_error_exhausted` — both attempts fail → ValueError "Falha na transcrição" (PASSED)
+- [x] Automated: `test_transcribe_all_content_types` — all 7 MIME types accepted, correct file extensions (PASSED)
+- [x] Full suite: 78/78 tests passing (no regressions)
+- [ ] Manual: T16 is service-only — manual testing will happen via T17 endpoint
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T17: Audio upload endpoint
+
+---
+
 ### 2026-02-20 — T15: Smart defaults confirmation endpoint
 
 **Status**: completed

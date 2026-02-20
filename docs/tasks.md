@@ -478,7 +478,7 @@
 **Manual tests**:
 - Record a short audio on your phone saying an answer in Portuguese → upload → verify transcription is accurate
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -791,8 +791,8 @@
 | T12 | AI follow-up evaluation + generation | M2 | T11 | `done` |
 | T13 | Dynamic question generation | M2 | T12 | `done` |
 | T14 | Interview progress endpoint + completion | M2 | T13 | `done` |
-| T15 | Smart defaults confirmation endpoint | M2 | T14 | `pending` |
-| T16 | Audio transcription service | M2 | T01 | `pending` |
+| T15 | Smart defaults confirmation endpoint | M2 | T14 | `done` |
+| T16 | Audio transcription service | M2 | T01 | `done` |
 | T17 | Audio upload endpoint | M2 | T04, T16 | `pending` |
 | T18 | AgentConfig Pydantic schema | M3 | — | `pending` |
 | T19 | Agent generation prompt | M3 | T18 | `pending` |

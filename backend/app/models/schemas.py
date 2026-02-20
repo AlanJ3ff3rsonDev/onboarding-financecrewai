@@ -71,6 +71,11 @@ class InterviewProgressResponse(BaseModel):
     is_complete: bool
 
 
+class TranscriptionResponse(BaseModel):
+    text: str
+    duration_seconds: float
+
+
 class CreateSessionRequest(BaseModel):
     company_name: str = Field(..., min_length=1)
     website: str = Field(..., min_length=1)
