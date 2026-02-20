@@ -769,7 +769,7 @@
   6. Generate simulation — do the conversations feel real?
   7. **This is the ultimate validation**: if Francisco reads the agent config and simulation and says "this is good enough to use", the MVP is validated
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -801,4 +801,4 @@
 | T22 | Agent adjustment endpoint | M3 | T21 | `done` |
 | T23 | Simulation prompt + service | M4 | T18 | `done` |
 | T24 | Simulation endpoint | M4 | T21, T23 | `done` |
-| T25 | End-to-end integration test | M5 | T24 | `pending` |
+| T25 | End-to-end integration test | M5 | T24 | `done` |

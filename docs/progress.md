@@ -65,6 +65,34 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T25: End-to-end integration test
+
+**Status**: completed
+
+**What was done**:
+- Created `tests/test_integration.py` with `test_full_onboarding_flow` — single test that walks through the entire onboarding pipeline
+- Uses **real OpenAI API calls** (not mocked) and **real Playwright scraping** — marked with `@pytest.mark.integration`
+- Test flow: create session → enrich (collectai.com.br) → verify enrichment → start interview → answer 12 core questions → answer dynamic questions → confirm defaults → generate agent → verify agent → generate simulation → verify simulation + final session state
+- Helpers:
+  - `_answer_question()` — submits answer and handles follow-up loop (up to 3 iterations client-side, server caps at 2)
+  - `_answer_dynamic_questions()` — loops through dynamic questions until phase becomes "defaults" (safety limit: 20 iterations)
+- Answer strategy: select/multiselect answers avoid "outro"/"depende" to skip follow-up eval; text answers are detailed (2+ sentences) to minimize follow-ups
+- Assertions are structural (status codes, required fields, valid enums, min lengths) — never assert on specific LLM-generated content
+- Run command: `cd backend && uv run pytest -m integration -v`
+
+**Tests**:
+- [x] Automated: `test_full_onboarding_flow` — full pipeline from session creation to simulation verification (PASSED)
+- [x] Full suite: 120/120 tests passing (119 existing + 1 new, no regressions)
+- [x] Execution time: ~2:35 (well within 3-minute limit)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- M5 complete (T25). All milestones M0-M5 done. Backend MVP is complete.
+
+---
+
 ### 2026-02-20 — T24: Simulation endpoint
 
 **Status**: completed
