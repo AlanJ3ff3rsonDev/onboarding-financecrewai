@@ -100,7 +100,7 @@ Track bugs or problems that need attention but aren't blocking current work.
 - None
 
 **Next steps**:
-- Move to T19: Agent generation prompt (when ready)
+- Move to T20: Agent generation service + sanity checks (when ready)
 
 ---
 
