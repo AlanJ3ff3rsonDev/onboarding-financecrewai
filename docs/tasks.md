@@ -606,7 +606,7 @@
 **Manual tests**:
 - Generate an agent config with real interview data → read the system_prompt → does it sound like a good collection agent for that specific business?
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -796,7 +796,7 @@
 | T17 | Audio upload endpoint | M2 | T04, T16 | `done` |
 | T18 | AgentConfig Pydantic schema | M3 | — | `done` |
 | T19 | Agent generation prompt | M3 | T18 | `done` |
-| T20 | Agent generation service + sanity checks | M3 | T19 | `pending` |
+| T20 | Agent generation service + sanity checks | M3 | T19 | `done` |
 | T21 | Agent generation endpoint | M3 | T04, T20 | `pending` |
 | T22 | Agent adjustment endpoint | M3 | T21 | `pending` |
 | T23 | Simulation prompt + service | M4 | T18 | `pending` |

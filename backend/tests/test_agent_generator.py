@@ -1,6 +1,17 @@
-"""Tests for agent generation prompt (T19)."""
+"""Tests for agent generation prompt (T19) and service (T20)."""
+
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from openai import OpenAIError
 
 from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
+from app.services.agent_generator import (
+    _apply_sanity_checks,
+    _extract_discount_limit,
+    generate_agent_config,
+)
 
 
 def _sample_company_profile() -> dict:
@@ -213,3 +224,214 @@ def test_prompt_handles_missing_data():
     assert "Não respondida" in prompt2
     # Defaults should fall back to SmartDefaults() values
     assert "3 dias" in prompt2  # follow_up_interval_days default
+
+
+# ---------------------------------------------------------------------------
+# T20: Agent generation service tests
+# ---------------------------------------------------------------------------
+
+def _valid_agent_config_dict() -> dict:
+    """A valid AgentConfig dict as the LLM would return it."""
+    return {
+        "agent_type": "compliant",
+        "company_context": {
+            "name": "CollectAI",
+            "segment": "Tecnologia / Cobrança digital",
+            "products": "Agentes de cobrança automatizados via WhatsApp",
+            "target_audience": "Empresas B2B com carteira de inadimplentes",
+        },
+        "system_prompt": (
+            "Você é um agente de cobrança virtual da CollectAI, especializado em "
+            "recuperação de crédito para empresas B2B. Sua comunicação deve ser "
+            "amigável, porém firme, sempre tratando o devedor pelo primeiro nome. "
+            "Nunca ameace o devedor, nunca mencione SPC ou Serasa, e nunca entre "
+            "em contato fora do horário comercial. Quando o devedor solicitar falar "
+            "com um humano, apresentar dívida de alto valor, ou comportamento "
+            "agressivo, escale imediatamente para um atendente humano. "
+            "Ao negociar, ofereça desconto apenas quando houver resistência, "
+            "até o máximo de 10% para pagamento integral. O parcelamento pode ser "
+            "feito em até 12 vezes, com valor mínimo de R$50 por parcela. "
+            "Aceite pagamentos via Pix, boleto ou cartão de crédito. "
+            "Sempre se identifique como inteligência artificial no início da conversa."
+        ),
+        "tone": {
+            "style": "friendly",
+            "use_first_name": True,
+            "prohibited_words": ["SPC", "Serasa", "processo", "ameaça"],
+            "preferred_words": ["acordo", "solução", "facilidade"],
+            "opening_message_template": (
+                "Olá {nome}, aqui é a assistente virtual da CollectAI. "
+                "Gostaria de conversar sobre uma pendência financeira."
+            ),
+        },
+        "negotiation_policies": {
+            "max_discount_full_payment_pct": 10.0,
+            "max_discount_installment_pct": 5.0,
+            "max_installments": 12,
+            "min_installment_value_brl": 50.0,
+            "discount_strategy": "only_when_resisted",
+            "payment_methods": ["pix", "boleto", "cartao_credito"],
+            "can_generate_payment_link": True,
+        },
+        "guardrails": {
+            "never_do": [
+                "Ameaçar o devedor",
+                "Contatar fora do horário comercial",
+            ],
+            "never_say": ["SPC", "Serasa", "processo judicial"],
+            "escalation_triggers": [
+                "Devedor solicita humano",
+                "Dívida acima de R$5.000",
+                "Comportamento agressivo",
+            ],
+            "follow_up_interval_days": 3,
+            "max_attempts_before_stop": 10,
+            "must_identify_as_ai": True,
+        },
+        "scenario_responses": {
+            "already_paid": (
+                "Entendo! Pode me enviar o comprovante de pagamento para "
+                "que eu possa verificar e atualizar nosso sistema?"
+            ),
+            "dont_recognize_debt": (
+                "Sem problemas. Vou encaminhar os detalhes da cobrança para "
+                "que você possa verificar. Posso enviar por e-mail ou WhatsApp?"
+            ),
+            "cant_pay_now": (
+                "Compreendo a situação. Podemos encontrar uma solução que "
+                "caiba no seu orçamento. Que tal parcelarmos o valor?"
+            ),
+            "aggressive_debtor": (
+                "Entendo sua frustração. Vou transferir você para um dos "
+                "nossos especialistas que poderá ajudá-lo melhor."
+            ),
+        },
+        "tools": [
+            "send_whatsapp_message",
+            "generate_pix_payment_link",
+            "generate_boleto",
+            "check_payment_status",
+            "escalate_to_human",
+            "schedule_follow_up",
+        ],
+        "metadata": {
+            "version": 1,
+            "generated_at": "2026-02-20T12:00:00+00:00",
+            "onboarding_session_id": "test-session-123",
+            "generation_model": "gpt-4.1-mini",
+        },
+    }
+
+
+def _mock_openai_response(data: dict) -> MagicMock:
+    """Build a mock OpenAI chat completion response."""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = json.dumps(data, ensure_ascii=False)
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_generate_agent_config():
+    """generate_agent_config with valid LLM output returns AgentConfig."""
+    config_dict = _valid_agent_config_dict()
+    mock_response = _mock_openai_response(config_dict)
+
+    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
+        instance = MockClient.return_value
+        instance.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await generate_agent_config(
+            _sample_company_profile(),
+            _sample_interview_responses(),
+            _sample_smart_defaults(),
+            session_id="sess-001",
+        )
+
+    assert result.agent_type == "compliant"
+    assert result.company_context.name == "CollectAI"
+    assert len(result.system_prompt) >= 200
+    assert result.tone.style == "friendly"
+    assert result.negotiation_policies.max_discount_full_payment_pct == 10.0
+    assert result.metadata.onboarding_session_id == "sess-001"
+    assert result.metadata.generation_model == "gpt-4.1-mini"
+
+
+@pytest.mark.asyncio
+async def test_sanity_check_discount_cap():
+    """LLM returns discount > interview limit → auto-capped."""
+    config_dict = _valid_agent_config_dict()
+    # LLM returns 50% but interview says max is 10%
+    config_dict["negotiation_policies"]["max_discount_full_payment_pct"] = 50.0
+    mock_response = _mock_openai_response(config_dict)
+
+    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
+        instance = MockClient.return_value
+        instance.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await generate_agent_config(
+            _sample_company_profile(),
+            _sample_interview_responses(),  # core_6 answer = "10"
+            _sample_smart_defaults(),
+        )
+
+    # Should be capped to 10 (from interview answer)
+    assert result.negotiation_policies.max_discount_full_payment_pct == 10.0
+
+
+@pytest.mark.asyncio
+async def test_sanity_check_system_prompt_quality():
+    """Short system_prompt raises ValueError."""
+    config_dict = _valid_agent_config_dict()
+    config_dict["system_prompt"] = "Muito curto"  # < 200 chars
+    mock_response = _mock_openai_response(config_dict)
+
+    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
+        instance = MockClient.return_value
+        instance.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(ValueError, match="200"):
+            await generate_agent_config(
+                _sample_company_profile(),
+                _sample_interview_responses(),
+                _sample_smart_defaults(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_generate_retries_on_failure():
+    """First LLM call fails, second succeeds → returns valid config."""
+    config_dict = _valid_agent_config_dict()
+    mock_response = _mock_openai_response(config_dict)
+
+    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
+        instance = MockClient.return_value
+        instance.chat.completions.create = AsyncMock(
+            side_effect=[OpenAIError("timeout"), mock_response]
+        )
+
+        result = await generate_agent_config(
+            _sample_company_profile(),
+            _sample_interview_responses(),
+            _sample_smart_defaults(),
+        )
+
+    assert result.agent_type == "compliant"
+    assert instance.chat.completions.create.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_both_attempts_fail():
+    """Both LLM calls fail → raises ValueError."""
+    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
+        instance = MockClient.return_value
+        instance.chat.completions.create = AsyncMock(
+            side_effect=[OpenAIError("fail 1"), OpenAIError("fail 2")]
+        )
+
+        with pytest.raises(ValueError, match="2 tentativas"):
+            await generate_agent_config(
+                _sample_company_profile(),
+                _sample_interview_responses(),
+                _sample_smart_defaults(),
+            )

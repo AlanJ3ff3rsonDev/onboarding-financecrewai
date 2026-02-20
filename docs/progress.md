@@ -65,6 +65,52 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T20: Agent generation service + sanity checks
+
+**Status**: completed
+
+**What was done**:
+- Implemented `app/services/agent_generator.py` with:
+  - `generate_agent_config(company_profile, interview_responses, smart_defaults, session_id) -> AgentConfig` — async function calling GPT-4.1-mini with structured JSON output
+  - 2-attempt retry loop with logging on failures; raises `ValueError` if both fail
+  - Auto-injects `metadata` fields (generated_at, onboarding_session_id, generation_model)
+  - `_apply_sanity_checks(data, interview_responses, smart_defaults) -> list[str]` — validates and auto-corrects LLM output, returns list of corrections
+  - `_extract_discount_limit(interview_responses) -> float | None` — parses core_6 answer to extract max discount
+- Sanity checks implemented:
+  - `system_prompt` < 200 chars → raises ValueError (fatal, can't auto-correct)
+  - `system_prompt` missing company name → logs warning (non-fatal)
+  - `max_discount_full_payment_pct` > interview answer → capped to interview limit
+  - `max_discount_installment_pct` > smart_defaults → capped to defaults limit
+  - Discount ranges clamped to Pydantic-valid bounds (0-100, 0-50)
+  - `max_installments` clamped to 0-48
+  - `follow_up_interval_days` clamped to 1-30
+  - `max_attempts_before_stop` clamped to 1-30
+- Note: contact hours sanity check removed (contact hours were removed from schema per Decisions Log)
+
+**Tests**:
+- [x] Automated: `test_generate_agent_config` — mock LLM returns valid dict → AgentConfig with correct fields and metadata (PASSED)
+- [x] Automated: `test_sanity_check_discount_cap` — LLM returns 50% discount, interview says 10% → capped to 10% (PASSED)
+- [x] Automated: `test_sanity_check_system_prompt_quality` — system_prompt < 200 chars → raises ValueError (PASSED)
+- [x] Automated: `test_generate_retries_on_failure` — first call fails, second succeeds → returns valid config, 2 calls made (PASSED)
+- [x] Automated: `test_generate_both_attempts_fail` — both OpenAI calls fail → raises ValueError "2 tentativas" (PASSED)
+- [x] Full suite: 92/92 tests passing (87 existing + 5 new, no regressions)
+
+**Issues found**:
+- None
+
+- [x] Manual: Generated agent config with real GPT-4.1-mini using realistic CollectAI data (12 core + 2 dynamic + 1 follow-up). Result:
+  - system_prompt: 1,719 chars, comprehensive, mentions CollectAI by name, covers tone/negotiation/escalation/scenarios
+  - Discounts: 10% full / 5% installment (correctly matches interview + defaults)
+  - Tone: friendly, use_first_name=True, appropriate prohibited/preferred words in Portuguese
+  - Scenario responses: realistic and empathetic with {first_name} placeholders
+  - Tools: 6 tools including generate_pix_payment_link and generate_boleto (from payment methods)
+  - Guardrails: never_do/never_say match interview core_11, escalation matches core_10
+
+**Next steps**:
+- Move to T21: Agent generation endpoint
+
+---
+
 ### 2026-02-20 — T19: Agent generation prompt
 
 **Status**: completed
