@@ -7,7 +7,6 @@ from app.models.schemas import (
     AgentConfig,
     AgentMetadata,
     CompanyContext,
-    ContactHours,
     Guardrails,
     NegotiationPolicies,
     ScenarioResponses,
@@ -66,11 +65,6 @@ def _valid_agent_config() -> AgentConfig:
                 "divida_alta",
                 "agressivo",
             ],
-            contact_hours=ContactHours(
-                weekday="08:00-20:00",
-                saturday="08:00-14:00",
-                sunday=None,
-            ),
             follow_up_interval_days=3,
             max_attempts_before_stop=10,
             must_identify_as_ai=True,
@@ -165,7 +159,6 @@ def test_agent_config_json_schema():
     defs = schema["$defs"]
     expected_defs = {
         "CompanyContext",
-        "ContactHours",
         "ToneConfig",
         "NegotiationPolicies",
         "Guardrails",

@@ -42,9 +42,6 @@ class InterviewQuestion(BaseModel):
 
 
 class SmartDefaults(BaseModel):
-    contact_hours_weekday: str = "08:00-20:00"
-    contact_hours_saturday: str = "08:00-14:00"
-    contact_sunday: bool = False
     follow_up_interval_days: int = Field(default=3, ge=1)
     max_contact_attempts: int = Field(default=10, ge=1)
     use_first_name: bool = True
@@ -115,12 +112,6 @@ class CompanyContext(BaseModel):
     target_audience: str
 
 
-class ContactHours(BaseModel):
-    weekday: str = Field(..., description="HH:MM-HH:MM format, e.g. '08:00-20:00'")
-    saturday: str = Field(..., description="HH:MM-HH:MM format, e.g. '08:00-14:00'")
-    sunday: str | None = Field(default=None, description="null if no Sunday contact")
-
-
 class ToneConfig(BaseModel):
     style: Literal["formal", "friendly", "empathetic", "assertive"]
     use_first_name: bool
@@ -143,7 +134,6 @@ class Guardrails(BaseModel):
     never_do: list[str]
     never_say: list[str]
     escalation_triggers: list[str]
-    contact_hours: ContactHours
     follow_up_interval_days: int = Field(..., ge=1)
     max_attempts_before_stop: int = Field(..., ge=1)
     must_identify_as_ai: bool

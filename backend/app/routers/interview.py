@@ -1,7 +1,5 @@
 """Interview question flow endpoints."""
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -177,34 +175,6 @@ async def get_interview_progress(
     )
 
 
-_HOURS_RE = re.compile(r"^(\d{2}):(\d{2})-(\d{2}):(\d{2})$")
-
-
-def _validate_contact_hours(value: str, field_name: str) -> None:
-    """Validate HH:MM-HH:MM format and 06:00-22:00 legal range."""
-    m = _HOURS_RE.match(value)
-    if not m:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{field_name}: formato inválido. Use HH:MM-HH:MM (ex: 08:00-20:00)",
-        )
-    start_h, start_m, end_h, end_m = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
-    if start_m >= 60 or end_m >= 60:
-        raise HTTPException(status_code=400, detail=f"{field_name}: minutos inválidos")
-    start_total = start_h * 60 + start_m
-    end_total = end_h * 60 + end_m
-    if start_total < 6 * 60 or end_total > 22 * 60:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{field_name}: horário deve estar entre 06:00 e 22:00",
-        )
-    if start_total >= end_total:
-        raise HTTPException(
-            status_code=400,
-            detail=f"{field_name}: horário de início deve ser antes do horário de fim",
-        )
-
-
 @router.get("/{session_id}/interview/defaults")
 async def get_defaults(
     session_id: str,
@@ -242,9 +212,6 @@ async def confirm_defaults(
             status_code=400,
             detail="Entrevista ainda não concluída. Finalize as perguntas antes de confirmar os padrões.",
         )
-
-    _validate_contact_hours(body.contact_hours_weekday, "contact_hours_weekday")
-    _validate_contact_hours(body.contact_hours_saturday, "contact_hours_saturday")
 
     session.smart_defaults = body.model_dump()
     state["phase"] = "complete"

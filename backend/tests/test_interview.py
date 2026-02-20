@@ -49,11 +49,8 @@ def test_financial_questions_have_none_option():
 
 
 def test_smart_defaults_complete():
-    """All 11 defaults from PRD present with correct values."""
+    """All 8 defaults from PRD present with correct values."""
     assert isinstance(SMART_DEFAULTS, SmartDefaults)
-    assert SMART_DEFAULTS.contact_hours_weekday == "08:00-20:00"
-    assert SMART_DEFAULTS.contact_hours_saturday == "08:00-14:00"
-    assert SMART_DEFAULTS.contact_sunday is False
     assert SMART_DEFAULTS.follow_up_interval_days == 3
     assert SMART_DEFAULTS.max_contact_attempts == 10
     assert SMART_DEFAULTS.use_first_name is True
@@ -1248,9 +1245,6 @@ def test_get_defaults(client: TestClient) -> None:
     data = resp.json()
     assert data["confirmed"] is False
     defaults = data["defaults"]
-    assert defaults["contact_hours_weekday"] == "08:00-20:00"
-    assert defaults["contact_hours_saturday"] == "08:00-14:00"
-    assert defaults["contact_sunday"] is False
     assert defaults["follow_up_interval_days"] == 3
     assert defaults["max_contact_attempts"] == 10
     assert defaults["use_first_name"] is True
@@ -1279,9 +1273,6 @@ def test_confirm_defaults(client: TestClient) -> None:
     session_id = _session_in_defaults_phase(client)
 
     defaults_body = {
-        "contact_hours_weekday": "08:00-20:00",
-        "contact_hours_saturday": "08:00-14:00",
-        "contact_sunday": False,
         "follow_up_interval_days": 3,
         "max_contact_attempts": 10,
         "use_first_name": True,
@@ -1317,9 +1308,6 @@ def test_adjust_defaults(client: TestClient) -> None:
     session_id = _session_in_defaults_phase(client)
 
     adjusted = {
-        "contact_hours_weekday": "09:00-18:00",
-        "contact_hours_saturday": "09:00-12:00",
-        "contact_sunday": False,
         "follow_up_interval_days": 5,
         "max_contact_attempts": 15,
         "use_first_name": False,
@@ -1340,7 +1328,6 @@ def test_adjust_defaults(client: TestClient) -> None:
     assert data["defaults"]["max_contact_attempts"] == 15
     assert data["defaults"]["discount_strategy"] == "proactive"
     assert data["defaults"]["min_installment_value"] == 100.0
-    assert data["defaults"]["contact_hours_weekday"] == "09:00-18:00"
     assert data["defaults"]["use_first_name"] is False
 
 
@@ -1351,63 +1338,23 @@ def test_defaults_validation_pydantic(client: TestClient) -> None:
     # Negative min_installment_value
     resp = client.post(
         f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={
-            "contact_hours_weekday": "08:00-20:00",
-            "contact_hours_saturday": "08:00-14:00",
-            "min_installment_value": -10.0,
-        },
+        json={"min_installment_value": -10.0},
     )
     assert resp.status_code == 422
 
     # Invalid discount_strategy
     resp2 = client.post(
         f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={
-            "contact_hours_weekday": "08:00-20:00",
-            "contact_hours_saturday": "08:00-14:00",
-            "discount_strategy": "invalid_strategy",
-        },
+        json={"discount_strategy": "invalid_strategy"},
     )
     assert resp2.status_code == 422
 
     # max_discount_installment_pct > 50
     resp3 = client.post(
         f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={
-            "contact_hours_weekday": "08:00-20:00",
-            "contact_hours_saturday": "08:00-14:00",
-            "max_discount_installment_pct": 60.0,
-        },
+        json={"max_discount_installment_pct": 60.0},
     )
     assert resp3.status_code == 422
-
-
-def test_defaults_validation_hours(client: TestClient) -> None:
-    """POST with invalid contact hours → 400."""
-    session_id = _session_in_defaults_phase(client)
-
-    # Hours outside legal range (before 06:00)
-    resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"contact_hours_weekday": "05:00-20:00"},
-    )
-    assert resp.status_code == 400
-    assert "06:00" in resp.json()["detail"]
-
-    # Hours outside legal range (after 22:00)
-    resp2 = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"contact_hours_weekday": "08:00-23:00"},
-    )
-    assert resp2.status_code == 400
-
-    # Bad format
-    resp3 = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"contact_hours_weekday": "8-20"},
-    )
-    assert resp3.status_code == 400
-    assert "formato" in resp3.json()["detail"].lower()
 
 
 def test_confirm_defaults_wrong_phase(client: TestClient) -> None:
@@ -1454,7 +1401,7 @@ def test_confirm_defaults_wrong_phase(client: TestClient) -> None:
 
     resp = client.post(
         f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"contact_hours_weekday": "08:00-20:00", "contact_hours_saturday": "08:00-14:00"},
+        json={},
     )
     assert resp.status_code == 400
     assert "não concluída" in resp.json()["detail"].lower()
@@ -1467,6 +1414,6 @@ def test_defaults_session_not_found(client: TestClient) -> None:
 
     resp2 = client.post(
         "/api/v1/sessions/nonexistent-id/interview/defaults",
-        json={"contact_hours_weekday": "08:00-20:00", "contact_hours_saturday": "08:00-14:00"},
+        json={},
     )
     assert resp2.status_code == 404
