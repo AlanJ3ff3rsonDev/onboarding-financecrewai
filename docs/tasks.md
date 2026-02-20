@@ -505,7 +505,7 @@
 **Manual tests**:
 - In Swagger: upload an audio file → see the transcription
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

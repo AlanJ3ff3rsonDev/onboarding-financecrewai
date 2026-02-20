@@ -64,6 +64,41 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T17: Audio upload endpoint
+
+**Status**: completed
+
+**What was done**:
+- Created `app/routers/audio.py` with `POST /api/v1/sessions/{id}/audio/transcribe`:
+  - Accepts multipart file upload via `UploadFile`
+  - Validates session exists (404 if not)
+  - Reads file bytes and content type from the upload
+  - Calls `transcribe_audio(file_bytes, content_type)` from T16's service
+  - Catches `ValueError` → returns 400 with the error message
+  - Returns `TranscriptionResponse` (`{ text, duration_seconds }`)
+- Registered audio router in `app/main.py`
+- Added 4 endpoint tests to `tests/test_audio.py` (mocking the service, not OpenAI)
+
+**Tests**:
+- [x] Automated: `test_transcribe_endpoint` — upload valid audio → 200 + text + duration (PASSED)
+- [x] Automated: `test_transcribe_bad_format` — upload .txt → 400 "Formato não suportado" (PASSED)
+- [x] Automated: `test_transcribe_no_file` — POST without file → 422 (PASSED)
+- [x] Automated: `test_transcribe_session_not_found` — nonexistent session → 404 (PASSED)
+- [x] Full suite: 82/82 tests passing (no regressions)
+- [x] Manual: Full endpoint test via curl on uvicorn (port 8000):
+  - POST with real `.ogg` audio file → `"Somos a empresa que faz cobranças e hoje temos 10 pessoas na operação e precisamos reduzir esse número."` ✓
+  - POST with `text/plain` file → 400 "Formato não suportado" ✓
+  - POST to non-existent session → 404 "Session not found" ✓
+  - POST without file → 422 "Field required" ✓
+
+**Issues found**:
+- **Bug (found in tests)**: `_create_session()` helper used `company_website` instead of `website` as the field name in the JSON payload. The `CreateSessionRequest` schema uses `website`. Fixed immediately.
+
+**Next steps**:
+- M2 complete (T08-T17). Move to M3: T18 (AgentConfig Pydantic schema)
+
+---
+
 ### 2026-02-20 — T16: Audio transcription service
 
 **Status**: completed

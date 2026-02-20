@@ -1,5 +1,6 @@
-"""Tests for T16: Audio transcription service."""
+"""Tests for T16: Audio transcription service + T17: Audio upload endpoint."""
 
+import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -114,3 +115,67 @@ async def test_transcribe_all_content_types():
 
             call_kwargs = mock_client.audio.transcriptions.create.call_args.kwargs
             assert call_kwargs["file"][0] == f"audio{ext}"
+
+
+# ---------------------------------------------------------------------------
+# T17: Audio upload endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _create_session(client):
+    """Helper: create a session and return its ID."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCo", "website": "https://test.com"},
+    )
+    return resp.json()["session_id"]
+
+
+@patch("app.routers.audio.transcribe_audio", new_callable=AsyncMock)
+def test_transcribe_endpoint(mock_transcribe: AsyncMock, client):
+    """Upload valid audio file → 200 + transcription returned."""
+    mock_transcribe.return_value = {"text": "Olá, tudo bem?", "duration_seconds": 2.5}
+
+    session_id = _create_session(client)
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/audio/transcribe",
+        files={"file": ("audio.webm", b"\x00" * 512, "audio/webm")},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["text"] == "Olá, tudo bem?"
+    assert data["duration_seconds"] == 2.5
+    mock_transcribe.assert_awaited_once()
+
+
+@patch("app.routers.audio.transcribe_audio", new_callable=AsyncMock)
+def test_transcribe_bad_format(mock_transcribe: AsyncMock, client):
+    """Upload unsupported file type → 400 error."""
+    mock_transcribe.side_effect = ValueError("Formato não suportado: text/plain")
+
+    session_id = _create_session(client)
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/audio/transcribe",
+        files={"file": ("notes.txt", b"hello world", "text/plain")},
+    )
+
+    assert resp.status_code == 400
+    assert "Formato não suportado" in resp.json()["detail"]
+
+
+def test_transcribe_no_file(client):
+    """POST without file → 422 validation error."""
+    session_id = _create_session(client)
+    resp = client.post(f"/api/v1/sessions/{session_id}/audio/transcribe")
+    assert resp.status_code == 422
+
+
+def test_transcribe_session_not_found(client):
+    """POST to non-existent session → 404."""
+    resp = client.post(
+        "/api/v1/sessions/nonexistent-id/audio/transcribe",
+        files={"file": ("audio.webm", b"\x00" * 100, "audio/webm")},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "Session not found"
