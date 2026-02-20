@@ -47,6 +47,7 @@ Track important decisions made during development that deviate from or clarify t
 
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
+| 2026-02-20 | Removed contact hours from SmartDefaults and AgentConfig (contact_hours_weekday, contact_hours_saturday, contact_sunday, ContactHours schema) | In the final solution, messages are always available — timing is user-controlled, not agent-controlled. These fields would be unnecessary questions. | SmartDefaults: 11→8 fields. Guardrails: removed contact_hours. Removed _validate_contact_hours(). Removed test_defaults_validation_hours. 85→84 tests. |
 | 2026-02-19 | Expanded core questions from 10 to 12: added juros (core_8) and multa (core_9) | User feedback: not all businesses charge interest/fines — need explicit "none" option | All task refs updated (T09, T25). core_6 changed from slider to select. IDs renumbered: old 8/9/10 → 10/11/12 |
 | 2026-02-20 | T13 uses async helper functions instead of formal LangGraph nodes for dynamic question generation and completeness evaluation | Matches T12 pattern (follow-up evaluation). Adding async nodes to synchronous LangGraph graphs would require significant refactoring. Helpers achieve identical functionality. | Task DoD says "adds nodes" but `generate_dynamic_question()` and `evaluate_interview_completeness()` serve the same purpose as nodes would. |
 
@@ -86,9 +87,17 @@ Track bugs or problems that need attention but aren't blocking current work.
 - [x] Automated: `test_agent_config_invalid_discount` — discount >100% and >50% both raise ValidationError (PASSED)
 - [x] Automated: `test_agent_config_json_schema` — model_json_schema() returns valid dict with all 9 top-level properties and 7 $defs (PASSED)
 - [x] Full suite: 85/85 tests passing (no regressions)
+- [x] Post-task cleanup: Removed contact hours fields (user decision) → 84/84 tests passing
+- [x] Manual: Verified via curl on uvicorn (port 8000):
+  - GET /interview/defaults → 8 fields, no contact_hours_weekday/saturday/sunday ✓
+  - POST /interview/defaults with adjusted values → confirmed=true, phase=complete ✓
+  - GET /sessions/{id} → status="interviewed", smart_defaults stored correctly ✓
+  - POST with negative min_installment → 422 ✓
+  - POST with discount > 50% → 422 ✓
 
 **Issues found**:
 - Minor: T17 was marked `done` in progress.md but still `pending` in tasks.md summary table. Fixed.
+- Contact hours removed from SmartDefaults, Guardrails, and AgentConfig (user decision — see Decisions Log).
 
 **Next steps**:
 - Move to T19: Agent generation prompt
