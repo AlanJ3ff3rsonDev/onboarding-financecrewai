@@ -65,6 +65,53 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T22: Agent adjustment endpoint
+
+**Status**: completed
+
+**What was done**:
+- Added `AgentAdjustRequest` Pydantic schema to `app/models/schemas.py` — `adjustments: dict[str, Any]` with `min_length=1` (dotted-path keys → new values)
+- Added `ADJUSTMENT_SYSTEM_PROMPT` and `build_adjustment_prompt()` to `app/prompts/agent_generator.py`:
+  - System prompt instructs LLM to regenerate ONLY `system_prompt` and `scenario_responses` from the full adjusted config
+  - User message includes adjustments summary + full config JSON
+- Added two functions to `app/services/agent_generator.py`:
+  - `_apply_dotted_path_adjustments(config_dict, adjustments)` — pure utility: deepcopy, walk dotted paths, set values, return (updated_dict, summary_lines). Raises ValueError for invalid paths.
+  - `adjust_agent_config(current_config, adjustments, session_id)` — applies structural changes, increments version, calls LLM to regenerate text fields, validates via `AgentConfig(**dict)`. 2-attempt retry on LLM failure.
+- Added `PUT /api/v1/sessions/{id}/agent/adjust` to `app/routers/agent.py`:
+  - Guards: 404 if session not found, 400 if no agent_config
+  - Catches ValueError → 400
+  - Status stays "generated" (no lifecycle transition)
+  - Returns `{"status": "adjusted", "agent_config": ...}`
+- Added 9 tests to `tests/test_agent_generator.py`
+
+**Tests**:
+- [x] Automated: `test_apply_dotted_path_valid` — valid paths update correctly, deepcopy protects original (PASSED)
+- [x] Automated: `test_apply_dotted_path_invalid` — bad path → ValueError "Caminho inválido" (PASSED)
+- [x] Automated: `test_adjust_tone` — PUT with tone.style=empathetic → config returned with new tone (PASSED)
+- [x] Automated: `test_adjust_discount` — PUT with discount=20 → negotiation_policies updated (PASSED)
+- [x] Automated: `test_adjust_version_incremented` — version goes from 1 to 2, GET returns updated version (PASSED)
+- [x] Automated: `test_adjust_before_generation` — PUT on session with no agent_config → 400 (PASSED)
+- [x] Automated: `test_adjust_session_not_found` — PUT on nonexistent session → 404 (PASSED)
+- [x] Automated: `test_adjust_invalid_path` — PUT with bad dotted path → 400 "Caminho inválido" (PASSED)
+- [x] Automated: `test_adjust_empty_adjustments` — PUT with empty dict → 422 (Pydantic min_length) (PASSED)
+- [x] Full suite: 107/107 tests passing (98 existing + 9 new, no regressions)
+- [x] Manual: Full adjustment flow via curl on uvicorn (port 8000):
+  - PUT adjust on non-generated session → 400 "not generated yet" ✓
+  - Generated agent config with real GPT-4.1-mini (version=1, tone=friendly, discount=10%)
+  - PUT adjust `tone.style=empathetic` → version=2, tone=empathetic, system_prompt reflects empathy ✓
+  - PUT adjust `negotiation_policies.max_discount_full_payment_pct=20` → version=3, discount=20%, system_prompt mentions 20% ✓
+  - PUT with invalid path → 400 "Caminho inválido" ✓
+  - GET /agent → final state persisted (version=3, tone=empathetic, discount=20%) ✓
+  - Session status stays "generated" after adjustments ✓
+
+**Issues found**:
+- None
+
+**Next steps**:
+- M3 complete (T18-T22). Move to M4: T23 (Simulation prompt + service)
+
+---
+
 ### 2026-02-20 — T21: Agent generation endpoint
 
 **Status**: completed

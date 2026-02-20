@@ -1,15 +1,22 @@
 """Agent config generation via LLM."""
 
+import copy
 import json
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from openai import AsyncOpenAI, OpenAIError
 
 from app.config import settings
 from app.models.schemas import AgentConfig
-from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
+from app.prompts.agent_generator import (
+    ADJUSTMENT_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+    build_adjustment_prompt,
+    build_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,3 +198,116 @@ async def generate_agent_config(
             raise ValueError(
                 "Falha na geração do agente após 2 tentativas."
             ) from exc
+
+
+def _apply_dotted_path_adjustments(
+    config_dict: dict,
+    adjustments: dict[str, Any],
+) -> tuple[dict, list[str]]:
+    """Apply dotted-path adjustments to a nested config dict.
+
+    Args:
+        config_dict: The original AgentConfig as a dict.
+        adjustments: Flat dict like {"tone.style": "empathetic", ...}.
+
+    Returns:
+        (updated_dict, summary_lines) where summary_lines describes each change.
+
+    Raises:
+        ValueError: If a dotted path references a non-existent key.
+    """
+    result = copy.deepcopy(config_dict)
+    summary_lines: list[str] = []
+
+    for path, new_value in adjustments.items():
+        parts = path.split(".")
+        target = result
+        for part in parts[:-1]:
+            if not isinstance(target, dict) or part not in target:
+                raise ValueError(
+                    f"Caminho inválido: '{path}' — '{part}' não encontrado na configuração."
+                )
+            target = target[part]
+        leaf_key = parts[-1]
+        if not isinstance(target, dict):
+            raise ValueError(
+                f"Caminho inválido: '{path}' — o pai não é um objeto."
+            )
+        if leaf_key not in target:
+            raise ValueError(
+                f"Caminho inválido: '{path}' — '{leaf_key}' não encontrado na configuração."
+            )
+        old_value = target[leaf_key]
+        target[leaf_key] = new_value
+        summary_lines.append(f"- {path}: {old_value!r} → {new_value!r}")
+
+    return result, summary_lines
+
+
+async def adjust_agent_config(
+    current_config: dict,
+    adjustments: dict[str, Any],
+    session_id: str = "",
+) -> AgentConfig:
+    """Apply user adjustments to an existing config and regenerate text fields.
+
+    Args:
+        current_config: The current agent_config dict from the DB.
+        adjustments: Flat dotted-path dict of changes to apply.
+        session_id: Session ID for metadata.
+
+    Returns:
+        Updated and validated AgentConfig with incremented version.
+
+    Raises:
+        ValueError: If paths are invalid, LLM fails, or validation fails.
+    """
+    # Step 1: Apply structural adjustments
+    adjusted_dict, summary_lines = _apply_dotted_path_adjustments(
+        current_config, adjustments
+    )
+    adjustments_summary = "\n".join(summary_lines)
+
+    # Step 2: Increment version and update timestamp
+    adjusted_dict.setdefault("metadata", {})
+    adjusted_dict["metadata"]["version"] = (
+        adjusted_dict["metadata"].get("version", 1) + 1
+    )
+    adjusted_dict["metadata"]["generated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Step 3: Regenerate system_prompt + scenario_responses via LLM
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    user_message = build_adjustment_prompt(adjusted_dict, adjustments_summary)
+
+    for attempt in range(2):
+        try:
+            response = await client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": ADJUSTMENT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+            )
+            regen_data = json.loads(response.choices[0].message.content)
+
+            adjusted_dict["system_prompt"] = regen_data["system_prompt"]
+            adjusted_dict["scenario_responses"] = regen_data["scenario_responses"]
+
+            break
+
+        except ValueError:
+            raise
+        except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
+            logger.warning(
+                "Adjustment regeneration attempt %d failed: %s", attempt + 1, exc
+            )
+            if attempt == 0:
+                continue
+            raise ValueError(
+                "Falha na regeneração do agente após 2 tentativas."
+            ) from exc
+
+    # Step 4: Validate final result via Pydantic
+    return AgentConfig(**adjusted_dict)

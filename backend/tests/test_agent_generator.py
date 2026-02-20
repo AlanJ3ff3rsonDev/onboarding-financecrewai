@@ -9,6 +9,7 @@ from openai import OpenAIError
 
 from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
 from app.services.agent_generator import (
+    _apply_dotted_path_adjustments,
     _apply_sanity_checks,
     _extract_discount_limit,
     generate_agent_config,
@@ -552,3 +553,180 @@ def test_regenerate_agent(
     resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
     assert resp.status_code == 200
     assert mock_generate.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# T22: Agent adjustment endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _set_session_generated(client: TestClient, session_id: str) -> None:
+    """Helper: fast-forward session to 'generated' status with stored agent_config."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    session = db.get(OnboardingSession, session_id)
+    session.status = "generated"
+    session.enrichment_data = _sample_company_profile()
+    session.interview_responses = _sample_interview_responses()
+    session.smart_defaults = _sample_smart_defaults()
+    session.interview_state = {"phase": "complete"}
+    session.agent_config = _valid_agent_config_dict()
+    db.commit()
+    db.close()
+
+
+def test_apply_dotted_path_valid() -> None:
+    """Valid dotted paths update nested dict correctly without mutating original."""
+    config = _valid_agent_config_dict()
+    original_style = config["tone"]["style"]
+
+    updated, summary = _apply_dotted_path_adjustments(
+        config,
+        {
+            "tone.style": "empathetic",
+            "negotiation_policies.max_discount_full_payment_pct": 20,
+        },
+    )
+
+    assert updated["tone"]["style"] == "empathetic"
+    assert updated["negotiation_policies"]["max_discount_full_payment_pct"] == 20
+    # Original must not be mutated (deepcopy)
+    assert config["tone"]["style"] == original_style
+    assert len(summary) == 2
+
+
+def test_apply_dotted_path_invalid() -> None:
+    """Invalid dotted path raises ValueError."""
+    config = _valid_agent_config_dict()
+    with pytest.raises(ValueError, match="Caminho inválido"):
+        _apply_dotted_path_adjustments(config, {"nonexistent.field": "x"})
+
+
+@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+def test_adjust_tone(
+    mock_adjust: AsyncMock,
+    client: TestClient,
+) -> None:
+    """PUT adjust with tone.style change → config returned with new tone."""
+    from app.models.schemas import AgentConfig
+
+    adjusted = _valid_agent_config_dict()
+    adjusted["tone"]["style"] = "empathetic"
+    adjusted["metadata"]["version"] = 2
+    mock_adjust.return_value = AgentConfig(**adjusted)
+
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {"tone.style": "empathetic"}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "adjusted"
+    assert data["agent_config"]["tone"]["style"] == "empathetic"
+
+    mock_adjust.assert_called_once()
+
+
+@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+def test_adjust_discount(
+    mock_adjust: AsyncMock,
+    client: TestClient,
+) -> None:
+    """PUT adjust with discount change → negotiation_policies updated."""
+    from app.models.schemas import AgentConfig
+
+    adjusted = _valid_agent_config_dict()
+    adjusted["negotiation_policies"]["max_discount_full_payment_pct"] = 20.0
+    adjusted["metadata"]["version"] = 2
+    mock_adjust.return_value = AgentConfig(**adjusted)
+
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {"negotiation_policies.max_discount_full_payment_pct": 20}},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent_config"]["negotiation_policies"]["max_discount_full_payment_pct"] == 20.0
+
+
+@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+def test_adjust_version_incremented(
+    mock_adjust: AsyncMock,
+    client: TestClient,
+) -> None:
+    """PUT adjust → version in returned config is 2."""
+    from app.models.schemas import AgentConfig
+
+    adjusted = _valid_agent_config_dict()
+    adjusted["metadata"]["version"] = 2
+    mock_adjust.return_value = AgentConfig(**adjusted)
+
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {"tone.style": "formal"}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["agent_config"]["metadata"]["version"] == 2
+
+    # GET agent also returns the updated version
+    resp = client.get(f"/api/v1/sessions/{session_id}/agent")
+    assert resp.status_code == 200
+    assert resp.json()["metadata"]["version"] == 2
+
+
+def test_adjust_before_generation(client: TestClient) -> None:
+    """PUT adjust on session with no agent_config → 400."""
+    session_id = _create_session(client)
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {"tone.style": "formal"}},
+    )
+    assert resp.status_code == 400
+    assert "not generated yet" in resp.json()["detail"]
+
+
+def test_adjust_session_not_found(client: TestClient) -> None:
+    """PUT adjust on nonexistent session → 404."""
+    resp = client.put(
+        "/api/v1/sessions/nonexistent-id/agent/adjust",
+        json={"adjustments": {"tone.style": "formal"}},
+    )
+    assert resp.status_code == 404
+
+
+def test_adjust_invalid_path(client: TestClient) -> None:
+    """PUT adjust with invalid dotted path → 400."""
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {"nonexistent_section.field": "value"}},
+    )
+    assert resp.status_code == 400
+    assert "Caminho inválido" in resp.json()["detail"]
+
+
+def test_adjust_empty_adjustments(client: TestClient) -> None:
+    """PUT adjust with empty adjustments → 422 (Pydantic min_length=1)."""
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    resp = client.put(
+        f"/api/v1/sessions/{session_id}/agent/adjust",
+        json={"adjustments": {}},
+    )
+    assert resp.status_code == 422

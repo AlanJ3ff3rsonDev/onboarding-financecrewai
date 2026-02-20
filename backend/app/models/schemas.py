@@ -163,3 +163,15 @@ class AgentConfig(BaseModel):
     scenario_responses: ScenarioResponses
     tools: list[str]
     metadata: AgentMetadata
+
+
+class AgentAdjustRequest(BaseModel):
+    adjustments: dict[str, Any] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Flat dict of dotted-path keys to new values. "
+            "Example: {'tone.style': 'empathetic', "
+            "'negotiation_policies.max_discount_full_payment_pct': 20}"
+        ),
+    )

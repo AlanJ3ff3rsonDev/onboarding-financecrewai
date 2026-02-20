@@ -31,6 +31,47 @@ SYSTEM_PROMPT = (
     "- Always respond with valid JSON matching the AgentConfig schema exactly."
 )
 
+ADJUSTMENT_SYSTEM_PROMPT = (
+    "You are an expert debt collection agent configurator for Brazilian businesses. "
+    "A user has just adjusted an existing agent configuration. "
+    "Your job is to regenerate ONLY two fields to stay consistent with the changes:\n"
+    "1. 'system_prompt': The complete instruction set for the collection agent "
+    "(minimum 300 words, in Brazilian Portuguese)\n"
+    "2. 'scenario_responses': The four scenario response strings (already_paid, "
+    "dont_recognize_debt, cant_pay_now, aggressive_debtor) — all in Brazilian Portuguese\n\n"
+    "You will receive the FULL updated agent configuration. "
+    "Regenerate system_prompt and scenario_responses to reflect ALL current settings "
+    "(especially tone, negotiation limits, guardrails, and company context). "
+    "Return ONLY a JSON object with exactly two keys: 'system_prompt' (string) and "
+    "'scenario_responses' (object with the four scenario keys). "
+    "Do NOT return the full AgentConfig — only those two fields."
+)
+
+
+def build_adjustment_prompt(
+    adjusted_config: dict,
+    adjustments_summary: str,
+) -> str:
+    """Build user message for regenerating system_prompt + scenario_responses.
+
+    Args:
+        adjusted_config: The full agent config dict after applying user adjustments.
+        adjustments_summary: Human-readable summary of what was changed.
+
+    Returns:
+        The user message to send alongside ADJUSTMENT_SYSTEM_PROMPT.
+    """
+    config_json = json.dumps(adjusted_config, indent=2, ensure_ascii=False)
+    return (
+        f"O usuário fez os seguintes ajustes na configuração do agente:\n"
+        f"{adjustments_summary}\n\n"
+        f"Configuração atual completa (após ajustes):\n"
+        f"```json\n{config_json}\n```\n\n"
+        f"Regenere o 'system_prompt' e o 'scenario_responses' para refletir "
+        f"todas as configurações atuais. Retorne apenas:\n"
+        f'{{"system_prompt": "...", "scenario_responses": {{...}}}}'
+    )
+
 
 def _get_answer_by_id(
     responses: list[dict], question_id: str

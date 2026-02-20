@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.orm import OnboardingSession
-from app.models.schemas import AgentConfig
-from app.services.agent_generator import generate_agent_config
+from app.models.schemas import AgentAdjustRequest, AgentConfig
+from app.services.agent_generator import adjust_agent_config, generate_agent_config
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["agent"])
 
@@ -61,3 +61,34 @@ async def get_agent(
         raise HTTPException(status_code=404, detail="Agent config not generated yet")
 
     return AgentConfig(**session.agent_config)
+
+
+@router.put("/{session_id}/agent/adjust")
+async def adjust_agent(
+    session_id: str,
+    request: AgentAdjustRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    session = db.get(OnboardingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.agent_config is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Agent config not generated yet. Call POST /agent/generate first.",
+        )
+
+    try:
+        config = await adjust_agent_config(
+            current_config=session.agent_config,
+            adjustments=request.adjustments,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    session.agent_config = config.model_dump()
+    db.commit()
+
+    return {"status": "adjusted", "agent_config": config.model_dump()}
