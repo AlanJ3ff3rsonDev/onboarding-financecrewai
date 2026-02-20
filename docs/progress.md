@@ -63,6 +63,42 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-19 — T11: Interview "submit answer" endpoint
+
+**Status**: completed
+
+**What was done**:
+- Added `SubmitAnswerRequest` Pydantic schema to `app/models/schemas.py` (question_id, answer, source)
+- Added `submit_answer(state, question_id, answer, source)` to `app/services/interview_agent.py`
+  - Validates question_id matches current_question (raises ValueError on mismatch)
+  - Appends answer to state's `answers` list (with question_text for context)
+  - Advances to next question via `get_next_question()`
+- Added `POST /api/v1/sessions/{id}/interview/answer` to `app/routers/interview.py`
+  - Stores answer in both `interview_state.answers` and `interview_responses` (clean list for agent generation)
+  - Returns `{ received: true, next_question: InterviewQuestion }` or phase info when core questions exhausted
+  - 400 on question_id mismatch, interview not started, or interview already complete
+  - 404 on session not found
+- Added 7 new tests (2 service-level, 5 endpoint-level)
+
+**Tests**:
+- [x] Automated: `test_submit_answer_service` — stores answer, advances to core_2 (PASSED)
+- [x] Automated: `test_submit_answer_wrong_question_id` — ValueError on mismatch (PASSED)
+- [x] Automated: `test_submit_answer_endpoint` — POST answer → next question returned (PASSED)
+- [x] Automated: `test_submit_answer_chain` — 3 answers in sequence → each returns correct next (PASSED)
+- [x] Automated: `test_answer_stored_in_session` — answer in both interview_responses and interview_state (PASSED)
+- [x] Automated: `test_wrong_question_id_endpoint` — 400 on mismatch (PASSED)
+- [x] Automated: `test_submit_answer_session_not_found` — 404 (PASSED)
+- [x] Automated: `test_submit_answer_interview_not_started` — 400 (PASSED)
+- [x] Full suite: 43/43 tests passing (no regressions)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T12: AI follow-up evaluation + generation
+
+---
+
 ### 2026-02-19 — T10: Interview "next question" endpoint
 
 **Status**: completed

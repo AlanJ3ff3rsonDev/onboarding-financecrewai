@@ -55,6 +55,12 @@ class SmartDefaults(BaseModel):
     max_discount_installment_pct: float = Field(default=5.0, ge=0, le=50)
 
 
+class SubmitAnswerRequest(BaseModel):
+    question_id: str = Field(..., min_length=1)
+    answer: str = Field(..., min_length=1)
+    source: Literal["text", "audio"] = "text"
+
+
 class CreateSessionRequest(BaseModel):
     company_name: str = Field(..., min_length=1)
     website: str = Field(..., min_length=1)

@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.orm import OnboardingSession
-from app.models.schemas import InterviewQuestion
+from app.models.schemas import InterviewQuestion, SubmitAnswerRequest
 from app.services.interview_agent import (
     create_interview,
     deserialize_state,
     serialize_state,
+    submit_answer,
 )
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["interview"])
@@ -43,3 +44,50 @@ async def get_next_question(
 
     question = InterviewQuestion.model_validate(current)
     return question.model_dump()
+
+
+@router.post("/{session_id}/interview/answer")
+async def post_submit_answer(
+    session_id: str,
+    body: SubmitAnswerRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    session = db.get(OnboardingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.interview_state is None:
+        raise HTTPException(status_code=400, detail="Interview not started")
+
+    state = deserialize_state(session.interview_state)
+
+    if state["phase"] == "complete":
+        raise HTTPException(status_code=400, detail="Interview already complete")
+
+    try:
+        next_question, new_state = await submit_answer(
+            state, body.question_id, body.answer, body.source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Persist answer in interview_responses (clean list for agent generation)
+    responses = list(session.interview_responses or [])
+    responses.append({
+        "question_id": body.question_id,
+        "answer": body.answer,
+        "source": body.source,
+    })
+    session.interview_responses = responses
+    session.interview_state = serialize_state(new_state)
+    db.commit()
+
+    if next_question is not None:
+        return {"received": True, "next_question": next_question.model_dump()}
+
+    return {
+        "received": True,
+        "next_question": None,
+        "phase": new_state["phase"],
+        "message": "Todas as perguntas principais foram respondidas",
+    }

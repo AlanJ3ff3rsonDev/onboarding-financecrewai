@@ -196,6 +196,59 @@ async def create_interview(enrichment_data: dict | None = None) -> InterviewStat
     return InterviewState(**result)
 
 
+async def submit_answer(
+    state: InterviewState,
+    question_id: str,
+    answer: str,
+    source: str = "text",
+) -> tuple[InterviewQuestion | None, InterviewState]:
+    """Store an answer and advance to the next question.
+
+    Args:
+        state: Current InterviewState (loaded from DB).
+        question_id: ID of the question being answered (must match current_question).
+        answer: The user's answer text.
+        source: "text" or "audio".
+
+    Returns:
+        Tuple of (next InterviewQuestion or None, updated InterviewState).
+
+    Raises:
+        ValueError: If question_id doesn't match the current question.
+    """
+    current = state.get("current_question")
+    if current is None or current.get("question_id") != question_id:
+        expected = current.get("question_id") if current else "none"
+        raise ValueError(
+            f"Question ID mismatch: expected '{expected}', got '{question_id}'"
+        )
+
+    # Store the answer
+    answers = list(state["answers"])
+    answers.append({
+        "question_id": question_id,
+        "answer": answer,
+        "source": source,
+        "question_text": current.get("question_text", ""),
+    })
+
+    # Update state with the answer before advancing
+    updated_state = InterviewState(
+        enrichment_data=state["enrichment_data"],
+        core_questions_remaining=state["core_questions_remaining"],
+        current_question=state["current_question"],
+        answers=answers,
+        dynamic_questions_asked=state["dynamic_questions_asked"],
+        max_dynamic_questions=state["max_dynamic_questions"],
+        phase=state["phase"],
+        needs_follow_up=state["needs_follow_up"],
+        follow_up_question=state["follow_up_question"],
+    )
+
+    # Advance to next question
+    return await get_next_question(updated_state)
+
+
 async def get_next_question(
     state: InterviewState,
 ) -> tuple[InterviewQuestion | None, InterviewState]:

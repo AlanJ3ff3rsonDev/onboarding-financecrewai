@@ -13,6 +13,7 @@ from app.services.interview_agent import (
     deserialize_state,
     get_next_question,
     serialize_state,
+    submit_answer,
 )
 
 
@@ -267,3 +268,158 @@ def test_interview_next_session_not_found(client: TestClient) -> None:
     """GET /interview/next for non-existent session → 404."""
     resp = client.get("/api/v1/sessions/nonexistent-id/interview/next")
     assert resp.status_code == 404
+
+
+# ---------- T11: Interview "submit answer" endpoint ----------
+
+
+@pytest.mark.asyncio
+async def test_submit_answer_service():
+    """submit_answer stores the answer and advances to next question."""
+    state = await create_interview()
+    assert state["current_question"]["question_id"] == "core_1"
+
+    next_q, new_state = await submit_answer(
+        state, "core_1", "Software de gestão", "text"
+    )
+    assert next_q is not None
+    assert next_q.question_id == "core_2"
+    assert len(new_state["answers"]) == 1
+    assert new_state["answers"][0]["question_id"] == "core_1"
+    assert new_state["answers"][0]["answer"] == "Software de gestão"
+    assert new_state["answers"][0]["source"] == "text"
+
+
+@pytest.mark.asyncio
+async def test_submit_answer_wrong_question_id():
+    """submit_answer raises ValueError on question_id mismatch."""
+    state = await create_interview()
+    with pytest.raises(ValueError, match="mismatch"):
+        await submit_answer(state, "core_5", "wrong question", "text")
+
+
+def test_submit_answer_endpoint(client: TestClient) -> None:
+    """POST /interview/answer stores answer and returns next question."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize interview
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Submit answer to core_1
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_1", "answer": "Vendemos software de cobrança", "source": "text"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["received"] is True
+    assert data["next_question"]["question_id"] == "core_2"
+
+
+def test_submit_answer_chain(client: TestClient) -> None:
+    """Submit answers to core_1 through core_3 — each returns next question."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize interview
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    answers = [
+        ("core_1", "Software de cobrança"),
+        ("core_2", "PIX e boleto"),
+        ("core_3", "Pessoas físicas com dívidas"),
+    ]
+    for qid, answer in answers:
+        resp = client.post(
+            f"/api/v1/sessions/{session_id}/interview/answer",
+            json={"question_id": qid, "answer": answer, "source": "text"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["received"] is True
+        assert data["next_question"] is not None
+
+    # After core_3, next should be core_4
+    assert data["next_question"]["question_id"] == "core_4"
+
+
+def test_answer_stored_in_session(client: TestClient) -> None:
+    """After submitting, answer appears in session's interview_responses."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize and answer
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_1", "answer": "Financiamento automotivo", "source": "text"},
+    )
+
+    # Check session
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    session_data = session_resp.json()
+    responses = session_data["interview_responses"]
+    assert len(responses) == 1
+    assert responses[0]["question_id"] == "core_1"
+    assert responses[0]["answer"] == "Financiamento automotivo"
+    assert responses[0]["source"] == "text"
+
+    # Also check interview_state has the answer
+    state = session_data["interview_state"]
+    assert len(state["answers"]) == 1
+    assert state["current_question"]["question_id"] == "core_2"
+
+
+def test_wrong_question_id_endpoint(client: TestClient) -> None:
+    """Submit answer for wrong question_id → 400."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize interview (current = core_1)
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Submit answer for core_5 instead of core_1
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_5", "answer": "wrong question", "source": "text"},
+    )
+    assert resp.status_code == 400
+    assert "mismatch" in resp.json()["detail"].lower()
+
+
+def test_submit_answer_session_not_found(client: TestClient) -> None:
+    """POST /interview/answer for non-existent session → 404."""
+    resp = client.post(
+        "/api/v1/sessions/nonexistent-id/interview/answer",
+        json={"question_id": "core_1", "answer": "test", "source": "text"},
+    )
+    assert resp.status_code == 404
+
+
+def test_submit_answer_interview_not_started(client: TestClient) -> None:
+    """POST /interview/answer before starting interview → 400."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_1", "answer": "test", "source": "text"},
+    )
+    assert resp.status_code == 400
+    assert "not started" in resp.json()["detail"].lower()

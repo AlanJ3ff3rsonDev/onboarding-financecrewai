@@ -334,7 +334,7 @@
 **Manual tests**:
 - In Swagger: cycle through a few questions submitting answers, verify the flow advances correctly
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -787,7 +787,7 @@
 | T08 | Core questions data structure | M2 | — | `done` |
 | T09 | LangGraph interview state + basic graph | M2 | T08 | `done` |
 | T10 | Interview "next question" endpoint | M2 | T04, T09 | `done` |
-| T11 | Interview "submit answer" endpoint | M2 | T10 | `pending` |
+| T11 | Interview "submit answer" endpoint | M2 | T10 | `done` |
 | T12 | AI follow-up evaluation + generation | M2 | T11 | `pending` |
 | T13 | Dynamic question generation | M2 | T12 | `pending` |
 | T14 | Interview progress endpoint + completion | M2 | T13 | `pending` |
