@@ -1,9 +1,10 @@
-"""Tests for simulation prompt + service (T23)."""
+"""Tests for simulation prompt + service (T23) and endpoints (T24)."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.models.schemas import (
@@ -264,3 +265,109 @@ async def test_generate_both_attempts_fail():
 
         with pytest.raises(ValueError, match="2 tentativas"):
             await generate_simulation(config)
+
+
+# ---------------------------------------------------------------------------
+# T24: Simulation endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _create_session(client: TestClient) -> str:
+    """Helper: create a session and return its ID."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://testcorp.com"},
+    )
+    return resp.json()["session_id"]
+
+
+def _set_session_generated(client: TestClient, session_id: str) -> None:
+    """Helper: fast-forward session to 'generated' status with stored agent_config."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    session = db.get(OnboardingSession, session_id)
+    session.status = "generated"
+    session.agent_config = _valid_agent_config().model_dump()
+    db.commit()
+    db.close()
+
+
+@patch("app.routers.simulation.generate_simulation", new_callable=AsyncMock)
+def test_generate_simulation_endpoint(
+    mock_generate: AsyncMock,
+    client: TestClient,
+) -> None:
+    """POST simulate on generated session → 200, simulation stored, status=completed."""
+    mock_data = _mock_simulation_response()
+    mock_generate.return_value = SimulationResult(**mock_data)
+
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    # POST generate simulation
+    resp = client.post(f"/api/v1/sessions/{session_id}/simulation/generate")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "completed"
+    assert len(data["simulation_result"]["scenarios"]) == 2
+    assert data["simulation_result"]["scenarios"][0]["scenario_type"] == "cooperative"
+
+    # GET simulation returns stored result
+    resp = client.get(f"/api/v1/sessions/{session_id}/simulation")
+    assert resp.status_code == 200
+    assert len(resp.json()["scenarios"]) == 2
+
+    # Session status is now "completed"
+    resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert resp.json()["status"] == "completed"
+
+
+def test_simulate_before_agent(client: TestClient) -> None:
+    """POST simulate without agent config → 400."""
+    session_id = _create_session(client)
+    resp = client.post(f"/api/v1/sessions/{session_id}/simulation/generate")
+    assert resp.status_code == 400
+    assert "not generated yet" in resp.json()["detail"]
+
+
+def test_simulate_session_not_found(client: TestClient) -> None:
+    """POST/GET simulate on nonexistent session → 404."""
+    resp = client.post("/api/v1/sessions/nonexistent-id/simulation/generate")
+    assert resp.status_code == 404
+
+    resp = client.get("/api/v1/sessions/nonexistent-id/simulation")
+    assert resp.status_code == 404
+
+
+def test_get_simulation_not_generated(client: TestClient) -> None:
+    """GET simulation before generation → 404."""
+    session_id = _create_session(client)
+    resp = client.get(f"/api/v1/sessions/{session_id}/simulation")
+    assert resp.status_code == 404
+    assert "not generated" in resp.json()["detail"]
+
+
+@patch("app.routers.simulation.generate_simulation", new_callable=AsyncMock)
+def test_re_simulate(
+    mock_generate: AsyncMock,
+    client: TestClient,
+) -> None:
+    """POST simulate twice → second overwrites first, both succeed."""
+    mock_data = _mock_simulation_response()
+    mock_generate.return_value = SimulationResult(**mock_data)
+
+    session_id = _create_session(client)
+    _set_session_generated(client, session_id)
+
+    # First simulation
+    resp = client.post(f"/api/v1/sessions/{session_id}/simulation/generate")
+    assert resp.status_code == 200
+
+    # Re-simulation should also succeed (status is "completed", which is allowed)
+    resp = client.post(f"/api/v1/sessions/{session_id}/simulation/generate")
+    assert resp.status_code == 200
+    assert mock_generate.call_count == 2

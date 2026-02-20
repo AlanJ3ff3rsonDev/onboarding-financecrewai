@@ -65,6 +65,45 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T24: Simulation endpoint
+
+**Status**: completed
+
+**What was done**:
+- Implemented `app/routers/simulation.py` with two endpoints:
+  - `POST /api/v1/sessions/{id}/simulation/generate` — validates session exists, agent_config exists, status is "generated" or "completed". Transitions status: → "simulating" → calls `generate_simulation()` → stores result → "completed". On failure, reverts status to "generated" and returns 500.
+  - `GET /api/v1/sessions/{id}/simulation` — returns stored SimulationResult. 404 if not generated yet.
+- Registered simulation router in `app/main.py`
+- Supports re-generation: POST again on a "completed" session overwrites previous simulation
+- Added 5 endpoint tests to `tests/test_simulation.py` (mocking the service, not OpenAI)
+
+**Tests**:
+- [x] Automated: `test_generate_simulation_endpoint` — session with agent_config → POST generate → 200, 2 scenarios returned, GET returns same, status="completed" (PASSED)
+- [x] Automated: `test_simulate_before_agent` — POST without agent_config → 400 "not generated yet" (PASSED)
+- [x] Automated: `test_simulate_session_not_found` — POST/GET on nonexistent session → 404 (PASSED)
+- [x] Automated: `test_get_simulation_not_generated` — GET before simulation → 404 "not generated" (PASSED)
+- [x] Automated: `test_re_simulate` — POST generate twice → both succeed, second overwrites first (PASSED)
+- [x] Full suite: 119/119 tests passing (114 existing + 5 new, no regressions)
+- [x] Manual: Full endpoint test via curl on uvicorn (port 8000):
+  - POST simulate without agent_config → 400 "not generated yet" ✓
+  - GET simulation before generation → 404 "not generated" ✓
+  - POST/GET on nonexistent session → 404 "Session not found" ✓
+  - Fast-forwarded session to "generated" with CollectAI agent config
+  - POST /simulation/generate with real GPT-4.1-mini → 200, status="completed":
+    - Scenario 1 (cooperative, 13 msgs): Joana, R$2,000 → 8x R$237.50 with 5% discount via PIX. Discount within limits (≤5% installment). Tone empathetic, used first name. Resolution: installment_plan ✓
+    - Scenario 2 (resistant, 9 msgs): Carlos doesn't recognize debt → agent follows template → Carlos demands 50%/70% → agent caps at 10% → Carlos gets aggressive → agent follows aggressive_debtor template → escalated. No prohibited words used. Resolution: escalated ✓
+  - GET /simulation → same 2 scenarios with metadata ✓
+  - GET /sessions/{id} → status="completed", simulation_result stored ✓
+  - Re-simulation: POST again on completed session → 200, new 2 scenarios generated (11 + 7 msgs) ✓
+
+**Issues found**:
+- None
+
+**Next steps**:
+- M4 complete (T23-T24). Move to M5: T25 (End-to-end integration test)
+
+---
+
 ### 2026-02-20 — T23: Simulation prompt + service
 
 **Status**: completed
