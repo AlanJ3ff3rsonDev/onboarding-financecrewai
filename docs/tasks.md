@@ -395,7 +395,7 @@
 **Manual tests**:
 - Complete all core questions for a specific business type → see what dynamic questions the AI generates. Are they relevant? Are they different from the core questions?
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

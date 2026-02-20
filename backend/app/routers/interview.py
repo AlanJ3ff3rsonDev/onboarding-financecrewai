@@ -9,6 +9,7 @@ from app.models.schemas import InterviewQuestion, SubmitAnswerRequest
 from app.services.interview_agent import (
     create_interview,
     deserialize_state,
+    generate_dynamic_question,
     serialize_state,
     submit_answer,
 )
@@ -38,7 +39,23 @@ async def get_next_question(
     if state["phase"] == "complete":
         return {"phase": "complete", "message": "Entrevista completa"}
 
+    if state["phase"] == "defaults":
+        return {"phase": "defaults", "message": "Fase de perguntas concluída. Confirme os padrões."}
+
     current = state.get("current_question")
+
+    # Dynamic phase with no current question: generate one
+    if current is None and state["phase"] == "dynamic":
+        question, new_state = await generate_dynamic_question(state)
+        if question is not None:
+            session.interview_state = serialize_state(new_state)
+            db.commit()
+            return question.model_dump()
+        # Generation failed or max reached — transitioned to defaults
+        session.interview_state = serialize_state(new_state)
+        db.commit()
+        return {"phase": new_state["phase"], "message": "Fase de perguntas concluída. Confirme os padrões."}
+
     if current is None:
         return {"phase": state["phase"], "message": "Nenhuma pergunta disponível"}
 
@@ -88,9 +105,14 @@ async def post_submit_answer(
             result["follow_up"] = next_question.model_dump()
         return result
 
+    phase = new_state["phase"]
+    if phase == "defaults":
+        message = "Entrevista concluída. Prossiga para confirmação dos padrões."
+    else:
+        message = "Nenhuma próxima pergunta disponível."
     return {
         "received": True,
         "next_question": None,
-        "phase": new_state["phase"],
-        "message": "Todas as perguntas principais foram respondidas",
+        "phase": phase,
+        "message": message,
     }

@@ -216,3 +216,57 @@ Se needs_follow_up for false, follow_up_question deve ser null.
 Se needs_follow_up for true, gere uma pergunta de aprofundamento natural, específica e em \
 português que ajude a extrair mais detalhes úteis para configurar o agente de cobrança.
 """
+
+DYNAMIC_QUESTION_PROMPT = """\
+Você é um especialista em onboarding de agentes de cobrança. Está conduzindo uma \
+entrevista para configurar um agente de cobrança personalizado.
+
+## Dados da empresa (extraídos do site)
+{enrichment_context}
+
+## Respostas coletadas até agora
+{answers_context}
+
+## Banco de categorias de perguntas dinâmicas
+{question_bank}
+
+## Instrução
+Com base em tudo que você sabe até agora, qual é a ÚNICA pergunta mais importante que \
+ainda falta ser respondida para criar um excelente agente de cobrança para esta empresa?
+
+Considere:
+- O que ainda não está claro sobre o processo de cobrança?
+- Quais cenários o agente pode enfrentar que ainda não foram cobertos?
+- Quais políticas ou regras estão faltando?
+- NÃO repita perguntas já feitas (veja as respostas acima)
+- A pergunta deve ser específica ao negócio/segmento desta empresa
+
+Responda EXCLUSIVAMENTE com um objeto JSON válido no formato:
+{{"question_text": "a pergunta em português", "category": "categoria do banco de perguntas", "reason": "motivo breve de por que esta pergunta é importante"}}
+"""
+
+INTERVIEW_COMPLETENESS_PROMPT = """\
+Você é um especialista em onboarding de agentes de cobrança. Avalie se temos informações \
+suficientes para gerar um agente de cobrança de alta qualidade.
+
+## Dados da empresa (extraídos do site)
+{enrichment_context}
+
+## Todas as respostas coletadas
+{answers_context}
+
+## Perguntas dinâmicas já feitas: {dynamic_count} de {max_dynamic}
+
+## Instrução
+Avalie de 1 a 10 o quão confiante você está de que temos dados suficientes para gerar \
+um agente de cobrança completo e eficaz para esta empresa.
+
+Critérios:
+- 1-3: Faltam informações críticas (processo de cobrança, políticas de desconto, tom)
+- 4-6: Temos o básico mas faltam detalhes importantes para cenários específicos
+- 7-8: Temos informações suficientes para um bom agente, poucos gaps
+- 9-10: Cobertura excelente, agente será muito personalizado
+
+Responda EXCLUSIVAMENTE com um objeto JSON válido no formato:
+{{"confidence": 7, "reason": "motivo breve", "missing_area": "área que ainda falta ou null se confiança >= 7"}}
+"""

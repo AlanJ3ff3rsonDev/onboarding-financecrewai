@@ -9,7 +9,13 @@ from openai import AsyncOpenAI, OpenAIError
 
 from app.config import settings
 from app.models.schemas import InterviewQuestion
-from app.prompts.interview import CORE_QUESTIONS, FOLLOW_UP_EVALUATION_PROMPT
+from app.prompts.interview import (
+    CORE_QUESTIONS,
+    DYNAMIC_QUESTION_BANK,
+    DYNAMIC_QUESTION_PROMPT,
+    FOLLOW_UP_EVALUATION_PROMPT,
+    INTERVIEW_COMPLETENESS_PROMPT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +193,37 @@ def _build_answers_context(answers: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _build_enrichment_context(enrichment_data: dict) -> str:
+    """Format enrichment data as readable text for LLM context."""
+    if not enrichment_data:
+        return "Nenhum dado de enriquecimento disponível."
+    field_labels = {
+        "company_name": "Empresa",
+        "segment": "Segmento",
+        "products_description": "Produtos/Serviços",
+        "target_audience": "Público-alvo",
+        "communication_tone": "Tom de comunicação",
+        "payment_methods_mentioned": "Métodos de pagamento",
+        "collection_relevant_context": "Contexto de cobrança",
+    }
+    lines = []
+    for field, label in field_labels.items():
+        value = enrichment_data.get(field, "")
+        if value and isinstance(value, str) and value.strip():
+            lines.append(f"- {label}: {value.strip()}")
+    return "\n".join(lines) if lines else "Nenhum dado de enriquecimento disponível."
+
+
+def _build_question_bank_context() -> str:
+    """Format the dynamic question bank as text for LLM context."""
+    lines = []
+    for category, questions in DYNAMIC_QUESTION_BANK.items():
+        lines.append(f"### {category}")
+        for q in questions:
+            lines.append(f"  - {q}")
+    return "\n".join(lines)
+
+
 def _get_parent_question_id(question_id: str) -> str:
     """Extract the parent core question ID from a follow-up ID.
 
@@ -264,6 +301,152 @@ async def evaluate_and_maybe_follow_up(
     }
 
     return True, follow_up_question
+
+
+# ---------- Dynamic question generation ----------
+
+
+async def generate_dynamic_question(
+    state: InterviewState,
+) -> tuple[InterviewQuestion | None, InterviewState]:
+    """Generate the next dynamic question using LLM.
+
+    Returns:
+        Tuple of (generated InterviewQuestion or None on failure, updated state).
+        On failure, transitions to "defaults" phase (graceful degradation).
+    """
+    dynamic_count = state.get("dynamic_questions_asked", 0)
+    max_dynamic = state.get("max_dynamic_questions", 8)
+
+    if dynamic_count >= max_dynamic:
+        logger.info("Max dynamic questions reached (%d), transitioning to defaults", dynamic_count)
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return None, new_state
+
+    if not settings.OPENAI_API_KEY:
+        logger.warning("No OPENAI_API_KEY, skipping dynamic questions")
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return None, new_state
+
+    prompt = DYNAMIC_QUESTION_PROMPT.format(
+        enrichment_context=_build_enrichment_context(state.get("enrichment_data", {})),
+        answers_context=_build_answers_context(state.get("answers", [])),
+        question_bank=_build_question_bank_context(),
+    )
+
+    try:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        response = await client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.5,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
+        logger.warning("Dynamic question generation failed: %s", exc)
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return None, new_state
+
+    question_text = data.get("question_text")
+    if not question_text:
+        logger.warning("LLM returned empty question_text, transitioning to defaults")
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return None, new_state
+
+    new_count = dynamic_count + 1
+    question_dict = {
+        "question_id": f"dynamic_{new_count}",
+        "question_text": question_text,
+        "question_type": "text",
+        "options": None,
+        "pre_filled_value": None,
+        "is_required": True,
+        "supports_audio": True,
+        "phase": "dynamic",
+        "context_hint": None,
+    }
+
+    new_state = InterviewState(
+        **{**dict(state),
+           "current_question": question_dict,
+           "dynamic_questions_asked": new_count,
+           "phase": "dynamic",
+           "follow_up_count": 0,
+           "needs_follow_up": False,
+           "follow_up_question": None,
+           }
+    )
+    question = InterviewQuestion.model_validate(question_dict)
+    return question, new_state
+
+
+async def evaluate_interview_completeness(
+    state: InterviewState,
+) -> tuple[bool, InterviewState]:
+    """Evaluate if the interview has enough data to generate a good agent.
+
+    Returns:
+        Tuple of (is_complete, updated_state).
+        is_complete=True means confidence >= 7 or max dynamic questions reached.
+    """
+    dynamic_count = state.get("dynamic_questions_asked", 0)
+    max_dynamic = state.get("max_dynamic_questions", 8)
+
+    if dynamic_count >= max_dynamic:
+        logger.info("Max dynamic questions reached (%d), interview complete", dynamic_count)
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return True, new_state
+
+    if not settings.OPENAI_API_KEY:
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return True, new_state
+
+    prompt = INTERVIEW_COMPLETENESS_PROMPT.format(
+        enrichment_context=_build_enrichment_context(state.get("enrichment_data", {})),
+        answers_context=_build_answers_context(state.get("answers", [])),
+        dynamic_count=dynamic_count,
+        max_dynamic=max_dynamic,
+    )
+
+    try:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        response = await client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
+        logger.warning("Completeness evaluation failed: %s", exc)
+        return False, state
+
+    confidence = data.get("confidence", 0)
+    logger.info(
+        "Interview completeness confidence: %d/10 (reason: %s)",
+        confidence, data.get("reason", ""),
+    )
+
+    if confidence >= 7:
+        new_state = InterviewState(
+            **{**dict(state), "phase": "defaults", "current_question": None}
+        )
+        return True, new_state
+
+    return False, state
 
 
 # ---------- Public API ----------
@@ -379,21 +562,33 @@ async def submit_answer(
            "follow_up_question": None,
            }
     )
+
+    # Dynamic phase: evaluate completeness before generating next question
+    if updated_state.get("phase") == "dynamic":
+        is_complete, eval_state = await evaluate_interview_completeness(updated_state)
+        if is_complete:
+            return None, eval_state
+        return await generate_dynamic_question(eval_state)
+
     return await get_next_question(updated_state)
 
 
 async def get_next_question(
     state: InterviewState,
 ) -> tuple[InterviewQuestion | None, InterviewState]:
-    """Advance the interview to the next core question.
+    """Advance the interview to the next question (core or dynamic).
 
     Args:
         state: Current InterviewState (loaded from DB).
 
     Returns:
-        Tuple of (next InterviewQuestion or None if no more core questions,
-        updated InterviewState).
+        Tuple of (next InterviewQuestion or None, updated InterviewState).
     """
+    # Already in dynamic phase — generate a dynamic question directly
+    if state.get("phase") == "dynamic":
+        return await generate_dynamic_question(state)
+
+    # Core phase: use the LangGraph to select next core question
     graph = _build_next_question_graph().compile()
     result = graph.invoke(dict(state))
     new_state = InterviewState(**result)
@@ -402,5 +597,9 @@ async def get_next_question(
     if current is not None:
         question = InterviewQuestion.model_validate(current)
         return question, new_state
+
+    # Core questions exhausted — phase just changed to "dynamic"
+    if new_state.get("phase") == "dynamic":
+        return await generate_dynamic_question(new_state)
 
     return None, new_state

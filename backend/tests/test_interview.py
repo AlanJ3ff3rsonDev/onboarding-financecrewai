@@ -756,3 +756,271 @@ async def test_multiselect_with_outro_triggers_follow_up():
     assert state3["needs_follow_up"] is True
     # LLM WAS called because answer contained "outro"
     mock_client.chat.completions.create.assert_called_once()
+
+
+# ---------- T13: Dynamic question generation ----------
+
+
+from app.services.interview_agent import (
+    evaluate_interview_completeness,
+    generate_dynamic_question,
+)
+
+
+def _dynamic_state(**overrides) -> InterviewState:
+    """Build an InterviewState in dynamic phase for testing."""
+    base: dict = {
+        "enrichment_data": {"company_name": "TestCo", "segment": "varejo"},
+        "core_questions_remaining": [],
+        "current_question": None,
+        "answers": [
+            {"question_id": f"core_{i}", "answer": f"Resposta {i}",
+             "source": "text", "question_text": f"Pergunta {i}"}
+            for i in range(1, 13)
+        ],
+        "dynamic_questions_asked": 0,
+        "max_dynamic_questions": 8,
+        "phase": "dynamic",
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "follow_up_count": 0,
+    }
+    base.update(overrides)
+    return InterviewState(**base)
+
+
+@pytest.mark.asyncio
+async def test_dynamic_phase_starts():
+    """After all 12 core questions answered, get_next_question enters dynamic phase."""
+    from unittest.mock import AsyncMock, patch
+
+    # State with 1 core question remaining (core_12) — simulate answering it
+    state = await create_interview()
+
+    # Fast-forward to core_12: empty the remaining list except last
+    last_q = CORE_QUESTIONS[-1].model_dump()
+    state_at_core_12 = InterviewState(
+        enrichment_data={},
+        core_questions_remaining=[],
+        current_question=last_q,
+        answers=[
+            {"question_id": f"core_{i}", "answer": f"Resp {i}",
+             "source": "text", "question_text": f"Q{i}"}
+            for i in range(1, 12)
+        ],
+        dynamic_questions_asked=0,
+        max_dynamic_questions=8,
+        phase="core",
+        needs_follow_up=False,
+        follow_up_question=None,
+        follow_up_count=0,
+    )
+
+    # Mock follow-up eval (no follow-up) and dynamic question generation
+    dyn_response = json.dumps({
+        "question_text": "Qual o ticket médio das dívidas?",
+        "category": "business_model",
+        "reason": "Importante para calibrar descontos",
+    })
+    mock_client = _mock_openai_response(dyn_response)
+
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up",
+               new_callable=AsyncMock, return_value=(False, None)):
+        with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+            with patch("app.services.interview_agent.settings") as mock_settings:
+                mock_settings.OPENAI_API_KEY = "test-key"
+                next_q, new_state = await submit_answer(
+                    state_at_core_12, "core_12", "Já paguei, não reconheço", "text",
+                )
+
+    assert next_q is not None
+    assert next_q.question_id == "dynamic_1"
+    assert next_q.phase == "dynamic"
+    assert new_state["phase"] == "dynamic"
+    assert new_state["dynamic_questions_asked"] == 1
+    assert len(new_state["answers"]) == 12
+
+
+@pytest.mark.asyncio
+async def test_dynamic_question_generated():
+    """generate_dynamic_question returns a valid InterviewQuestion with correct format."""
+    from unittest.mock import patch
+
+    state = _dynamic_state()
+
+    mock_response = json.dumps({
+        "question_text": "Qual o ticket médio das dívidas que você cobra?",
+        "category": "business_model",
+        "reason": "Importante para calibrar ofertas de desconto",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            question, new_state = await generate_dynamic_question(state)
+
+    assert question is not None
+    assert question.question_id == "dynamic_1"
+    assert question.phase == "dynamic"
+    assert question.question_type == "text"
+    assert question.is_required is True
+    assert question.supports_audio is True
+    assert "ticket" in question.question_text.lower()
+    assert new_state["dynamic_questions_asked"] == 1
+    assert new_state["phase"] == "dynamic"
+    assert new_state["current_question"]["question_id"] == "dynamic_1"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_question_contextual():
+    """Dynamic question prompt includes business-specific context from answers."""
+    from unittest.mock import patch
+
+    state = _dynamic_state(
+        enrichment_data={"company_name": "ConstrutAI", "segment": "construção civil"},
+        answers=[
+            {"question_id": "core_1", "answer": "Materiais de construção e acabamento",
+             "source": "text", "question_text": "O que sua empresa vende?"},
+            {"question_id": "core_4", "answer": "Ligamos para obras que não pagaram em 30 dias",
+             "source": "text", "question_text": "Fluxo de cobrança"},
+        ],
+    )
+
+    mock_response = json.dumps({
+        "question_text": "As obras costumam ter um responsável financeiro diferente do engenheiro?",
+        "category": "debtor_profile",
+        "reason": "Na construção, quem decide e quem paga são pessoas diferentes",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            question, _ = await generate_dynamic_question(state)
+
+    assert question is not None
+    assert question.phase == "dynamic"
+
+    # Verify prompt sent to LLM contains business context
+    call_args = mock_client.chat.completions.create.call_args
+    prompt_content = call_args.kwargs["messages"][0]["content"]
+    assert "construção" in prompt_content.lower()
+    assert "Materiais de construção" in prompt_content
+
+
+@pytest.mark.asyncio
+async def test_max_dynamic_reached():
+    """After 8 dynamic questions, transitions to 'defaults' without LLM call."""
+    state = _dynamic_state(dynamic_questions_asked=8)
+
+    question, new_state = await generate_dynamic_question(state)
+
+    assert question is None
+    assert new_state["phase"] == "defaults"
+    assert new_state["current_question"] is None
+
+
+@pytest.mark.asyncio
+async def test_early_completion():
+    """If LLM rates confidence >= 7, evaluate_interview_completeness returns True."""
+    from unittest.mock import patch
+
+    state = _dynamic_state(dynamic_questions_asked=3)
+
+    mock_response = json.dumps({
+        "confidence": 8,
+        "reason": "Temos informações detalhadas sobre o processo de cobrança",
+        "missing_area": None,
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            is_complete, new_state = await evaluate_interview_completeness(state)
+
+    assert is_complete is True
+    assert new_state["phase"] == "defaults"
+    assert new_state["current_question"] is None
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_continues():
+    """If LLM rates confidence < 7, evaluate_interview_completeness returns False."""
+    from unittest.mock import patch
+
+    state = _dynamic_state(dynamic_questions_asked=2)
+
+    mock_response = json.dumps({
+        "confidence": 5,
+        "reason": "Faltam detalhes sobre cenários específicos",
+        "missing_area": "scenario_handling",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            is_complete, new_state = await evaluate_interview_completeness(state)
+
+    assert is_complete is False
+    assert new_state["phase"] == "dynamic"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_dynamic_answer_triggers_completeness_eval():
+    """Answering a dynamic question triggers completeness evaluation."""
+    from unittest.mock import AsyncMock, patch
+
+    state = _dynamic_state(
+        dynamic_questions_asked=2,
+        current_question={
+            "question_id": "dynamic_2",
+            "question_text": "Qual o ticket médio?",
+            "question_type": "text",
+            "options": None,
+            "pre_filled_value": None,
+            "is_required": True,
+            "supports_audio": True,
+            "phase": "dynamic",
+            "context_hint": None,
+        },
+    )
+
+    # Mock: no follow-up, completeness says not done, generate next dynamic
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up",
+               new_callable=AsyncMock, return_value=(False, None)):
+        with patch("app.services.interview_agent.evaluate_interview_completeness",
+                   new_callable=AsyncMock, return_value=(False, state)) as mock_eval:
+            dyn_q_dict = {
+                "question_id": "dynamic_3",
+                "question_text": "Como lidar com 'já paguei'?",
+                "question_type": "text",
+                "options": None,
+                "pre_filled_value": None,
+                "is_required": True,
+                "supports_audio": True,
+                "phase": "dynamic",
+                "context_hint": None,
+            }
+            gen_state = InterviewState(
+                **{**dict(state),
+                   "current_question": dyn_q_dict,
+                   "dynamic_questions_asked": 3,
+                   }
+            )
+            with patch("app.services.interview_agent.generate_dynamic_question",
+                       new_callable=AsyncMock,
+                       return_value=(InterviewQuestion.model_validate(dyn_q_dict), gen_state)) as mock_gen:
+                next_q, new_state = await submit_answer(
+                    state, "dynamic_2", "R$ 500 em média", "text",
+                )
+
+    # Completeness was evaluated
+    mock_eval.assert_called_once()
+    # Not complete → generated next dynamic question
+    mock_gen.assert_called_once()
+    assert next_q is not None
+    assert next_q.question_id == "dynamic_3"
+    assert next_q.phase == "dynamic"

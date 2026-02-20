@@ -48,6 +48,7 @@ Track important decisions made during development that deviate from or clarify t
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
 | 2026-02-19 | Expanded core questions from 10 to 12: added juros (core_8) and multa (core_9) | User feedback: not all businesses charge interest/fines — need explicit "none" option | All task refs updated (T09, T25). core_6 changed from slider to select. IDs renumbered: old 8/9/10 → 10/11/12 |
+| 2026-02-20 | T13 uses async helper functions instead of formal LangGraph nodes for dynamic question generation and completeness evaluation | Matches T12 pattern (follow-up evaluation). Adding async nodes to synchronous LangGraph graphs would require significant refactoring. Helpers achieve identical functionality. | Task DoD says "adds nodes" but `generate_dynamic_question()` and `evaluate_interview_completeness()` serve the same purpose as nodes would. |
 
 ---
 
@@ -62,6 +63,49 @@ Track bugs or problems that need attention but aren't blocking current work.
 ---
 
 ## Development Log
+
+### 2026-02-20 — T13: Dynamic question generation
+
+**Status**: completed
+
+**What was done**:
+- Added `DYNAMIC_QUESTION_PROMPT` to `app/prompts/interview.py` — given enrichment + all answers + question bank categories, LLM generates the single most important missing question (JSON output: question_text, category, reason)
+- Added `INTERVIEW_COMPLETENESS_PROMPT` to `app/prompts/interview.py` — LLM rates confidence 1-10 on having enough data for a good agent (JSON output: confidence, reason, missing_area)
+- Added 4 helper functions to `app/services/interview_agent.py`:
+  - `_build_enrichment_context()` — formats enrichment dict as labeled bullet list
+  - `_build_question_bank_context()` — formats DYNAMIC_QUESTION_BANK as categorized text
+  - `generate_dynamic_question(state)` — async, calls GPT-4.1-mini to generate next dynamic question. Returns `(InterviewQuestion, InterviewState)`. On any error/max reached → transitions to "defaults" phase
+  - `evaluate_interview_completeness(state)` — async, calls GPT-4.1-mini to rate confidence. Returns `(bool, InterviewState)`. If confidence >= 7 or max reached → complete. On error → returns False (keep asking)
+- Modified `get_next_question()` — when phase="dynamic", calls `generate_dynamic_question()` instead of the core question graph. Also handles transition from core to dynamic (when graph sets phase="dynamic" after exhausting core questions)
+- Modified `submit_answer()` — after answering a dynamic question (and resolving follow-ups), calls `evaluate_interview_completeness()` then `generate_dynamic_question()` if not complete
+- Modified GET `/interview/next` endpoint — handles dynamic phase (generates question if none exists), handles "defaults" phase message
+- Modified POST `/interview/answer` response — phase-aware messages ("defaults" → specific completion message)
+- Added 7 new tests (all mock OpenAI)
+
+**Tests**:
+- [x] Automated: `test_dynamic_phase_starts` — after core_12, submit_answer generates dynamic_1 (PASSED)
+- [x] Automated: `test_dynamic_question_generated` — generate_dynamic_question returns valid InterviewQuestion with phase="dynamic", id="dynamic_1" (PASSED)
+- [x] Automated: `test_dynamic_question_contextual` — prompt sent to LLM includes business-specific context from answers and enrichment (PASSED)
+- [x] Automated: `test_max_dynamic_reached` — dynamic_questions_asked=8 → transitions to "defaults" without LLM call (PASSED)
+- [x] Automated: `test_early_completion` — confidence=8 → evaluate_interview_completeness returns (True, state_with_defaults) (PASSED)
+- [x] Automated: `test_low_confidence_continues` — confidence=5 → returns (False, state) unchanged (PASSED)
+- [x] Automated: `test_dynamic_answer_triggers_completeness_eval` — answering dynamic question triggers completeness eval then generates next dynamic (PASSED)
+- [x] Full suite: 58/58 tests passing (no regressions)
+- [x] Manual: Full flow via curl with real LLM (GPT-4.1-mini):
+  - Created session → answered all 12 core questions (with follow-ups)
+  - 8 dynamic questions generated — all contextual: desconto negotiation, segmentation by value/time, opening messages, ticket médio, high-priority debts, "já paguei" scenario, "não posso pagar" scenario, "não reconheço" scenario
+  - Follow-ups triggered on dynamic questions too (same T12 pattern, max 2 per question)
+  - After dynamic_8's follow-ups resolved → phase="defaults", message="Entrevista concluída"
+  - GET /interview/next in defaults phase → "Fase de perguntas concluída. Confirme os padrões."
+  - Total: 44 answers (12 core + ~12 core follow-ups + 8 dynamic + ~12 dynamic follow-ups)
+
+**Issues found**:
+- None. Existing 51 tests continued passing. Dynamic phase integrates seamlessly with the T12 follow-up system.
+
+**Next steps**:
+- Move to T14: Interview progress endpoint + completion
+
+---
 
 ### 2026-02-19 — T12: AI follow-up evaluation + generation
 
