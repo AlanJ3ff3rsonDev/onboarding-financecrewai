@@ -634,7 +634,7 @@
 **Manual tests**:
 - Full flow in Swagger: create → enrich → interview (complete) → generate agent → inspect the JSON
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -797,7 +797,7 @@
 | T18 | AgentConfig Pydantic schema | M3 | — | `done` |
 | T19 | Agent generation prompt | M3 | T18 | `done` |
 | T20 | Agent generation service + sanity checks | M3 | T19 | `done` |
-| T21 | Agent generation endpoint | M3 | T04, T20 | `pending` |
+| T21 | Agent generation endpoint | M3 | T04, T20 | `done` |
 | T22 | Agent adjustment endpoint | M3 | T21 | `pending` |
 | T23 | Simulation prompt + service | M4 | T18 | `pending` |
 | T24 | Simulation endpoint | M4 | T21, T23 | `pending` |

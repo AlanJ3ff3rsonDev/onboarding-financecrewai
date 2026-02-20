@@ -1,9 +1,10 @@
-"""Tests for agent generation prompt (T19) and service (T20)."""
+"""Tests for agent generation prompt (T19), service (T20), and endpoints (T21)."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 from openai import OpenAIError
 
 from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
@@ -435,3 +436,119 @@ async def test_generate_both_attempts_fail():
                 _sample_interview_responses(),
                 _sample_smart_defaults(),
             )
+
+
+# ---------------------------------------------------------------------------
+# T21: Agent generation endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _create_session(client: TestClient) -> str:
+    """Helper: create a session and return its ID."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://testcorp.com"},
+    )
+    return resp.json()["session_id"]
+
+
+def _set_session_interviewed(client: TestClient, session_id: str) -> None:
+    """Helper: fast-forward session to 'interviewed' status with required data."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    session = db.get(OnboardingSession, session_id)
+    session.status = "interviewed"
+    session.enrichment_data = _sample_company_profile()
+    session.interview_responses = _sample_interview_responses()
+    session.smart_defaults = _sample_smart_defaults()
+    session.interview_state = {"phase": "complete"}
+    db.commit()
+    db.close()
+
+
+@patch("app.routers.agent.generate_agent_config", new_callable=AsyncMock)
+def test_generate_agent_endpoint(
+    mock_generate: AsyncMock,
+    client: TestClient,
+) -> None:
+    """POST generate on interviewed session → 200, agent_config stored, status=generated."""
+    from app.models.schemas import AgentConfig
+
+    config = AgentConfig(**_valid_agent_config_dict())
+    mock_generate.return_value = config
+
+    session_id = _create_session(client)
+    _set_session_interviewed(client, session_id)
+
+    # POST generate
+    resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "generated"
+    assert data["agent_config"]["company_context"]["name"] == "CollectAI"
+
+    # GET agent returns stored config
+    resp = client.get(f"/api/v1/sessions/{session_id}/agent")
+    assert resp.status_code == 200
+    assert resp.json()["company_context"]["name"] == "CollectAI"
+    assert resp.json()["agent_type"] == "compliant"
+
+    # Session status is now "generated"
+    resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert resp.json()["status"] == "generated"
+
+
+def test_generate_before_interview(client: TestClient) -> None:
+    """POST generate on a non-interviewed session → 400."""
+    session_id = _create_session(client)
+    resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
+    assert resp.status_code == 400
+    assert "Interview must be completed" in resp.json()["detail"]
+
+
+def test_get_agent_not_generated(client: TestClient) -> None:
+    """GET agent before generation → 404."""
+    session_id = _create_session(client)
+    resp = client.get(f"/api/v1/sessions/{session_id}/agent")
+    assert resp.status_code == 404
+    assert "not generated" in resp.json()["detail"]
+
+
+def test_generate_session_not_found(client: TestClient) -> None:
+    """POST generate on nonexistent session → 404."""
+    resp = client.post("/api/v1/sessions/nonexistent-id/agent/generate")
+    assert resp.status_code == 404
+
+
+def test_get_agent_session_not_found(client: TestClient) -> None:
+    """GET agent on nonexistent session → 404."""
+    resp = client.get("/api/v1/sessions/nonexistent-id/agent")
+    assert resp.status_code == 404
+
+
+@patch("app.routers.agent.generate_agent_config", new_callable=AsyncMock)
+def test_regenerate_agent(
+    mock_generate: AsyncMock,
+    client: TestClient,
+) -> None:
+    """POST generate on already-generated session → succeeds (re-generation)."""
+    from app.models.schemas import AgentConfig
+
+    config = AgentConfig(**_valid_agent_config_dict())
+    mock_generate.return_value = config
+
+    session_id = _create_session(client)
+    _set_session_interviewed(client, session_id)
+
+    # First generation
+    resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
+    assert resp.status_code == 200
+
+    # Re-generation should also succeed (status is "generated", which is allowed)
+    resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
+    assert resp.status_code == 200
+    assert mock_generate.call_count == 2

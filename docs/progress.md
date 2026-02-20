@@ -65,6 +65,50 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T21: Agent generation endpoint
+
+**Status**: completed
+
+**What was done**:
+- Implemented `app/routers/agent.py` with two endpoints:
+  - `POST /api/v1/sessions/{id}/agent/generate` — validates session status is "interviewed" or "generated", transitions to "generating" → calls `generate_agent_config()` → stores result in `agent_config` column → transitions to "generated". On generation failure, reverts status to "interviewed" and returns 500.
+  - `GET /api/v1/sessions/{id}/agent` — returns stored AgentConfig. 404 if not generated yet.
+- Registered agent router in `app/main.py`
+- Status validation: 400 if session not in "interviewed"/"generated" state
+- Re-generation supported: calling POST generate on an already-generated session works (overwrites previous config)
+- Added 6 endpoint tests to `tests/test_agent_generator.py`
+
+**Tests**:
+- [x] Automated: `test_generate_agent_endpoint` — interviewed session → POST generate → 200, agent_config stored, GET returns it, status="generated" (PASSED)
+- [x] Automated: `test_generate_before_interview` — POST on non-interviewed session → 400 (PASSED)
+- [x] Automated: `test_get_agent_not_generated` — GET before generation → 404 (PASSED)
+- [x] Automated: `test_generate_session_not_found` — POST on nonexistent session → 404 (PASSED)
+- [x] Automated: `test_get_agent_session_not_found` — GET on nonexistent session → 404 (PASSED)
+- [x] Automated: `test_regenerate_agent` — POST generate twice → both succeed (PASSED)
+- [x] Full suite: 98/98 tests passing (92 existing + 6 new, no regressions)
+- [x] Manual: Full endpoint test via curl on uvicorn (port 8000):
+  - POST /agent/generate on "created" session → 400 "Interview must be completed" ✓
+  - GET /agent before generation → 404 "not generated yet" ✓
+  - POST/GET on nonexistent session → 404 "Session not found" ✓
+  - Fast-forwarded session to "interviewed" with real CollectAI data (12 core + 2 dynamic answers)
+  - POST /agent/generate with real GPT-4.1-mini → 200, agent_config generated:
+    - system_prompt: 1,883 chars, comprehensive, mentions CollectAI, covers all policies
+    - Discounts: 10% full / 5% installment (matches interview + defaults)
+    - Tone: friendly, use_first_name=true, prohibited words include SPC/Serasa
+    - Scenario responses: realistic with {first_name} placeholders
+    - Tools: 6 tools including generate_pix_payment_link and generate_boleto
+    - Guardrails: never_do/never_say match core_11, escalation matches core_10
+  - GET /agent → returns same config ✓
+  - GET /sessions/{id} → status="generated", agent_config stored ✓
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T22: Agent adjustment endpoint
+
+---
+
 ### 2026-02-20 — T20: Agent generation service + sanity checks
 
 **Status**: completed
