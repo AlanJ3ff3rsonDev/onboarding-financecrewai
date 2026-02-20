@@ -63,6 +63,51 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-19 — T12: AI follow-up evaluation + generation
+
+**Status**: completed
+
+**What was done**:
+- Added `FOLLOW_UP_EVALUATION_PROMPT` to `app/prompts/interview.py` — single LLM call evaluates answer quality AND generates follow-up (JSON output: needs_follow_up, follow_up_question, reason)
+- Updated `InterviewState` in `app/services/interview_agent.py` with `follow_up_count: int` field
+- Added `evaluate_and_maybe_follow_up(state, question_id, answer)` async function:
+  - Skips evaluation if `follow_up_count >= 2` (MAX_FOLLOW_UPS_PER_QUESTION)
+  - Skips if no `OPENAI_API_KEY` configured (graceful degradation)
+  - Calls GPT-4.1-mini with formatted prompt, returns `(bool, dict | None)`
+  - On any error (OpenAI, JSON parse, etc): returns `(False, None)` — never blocks the flow
+- Added `_build_answers_context()` and `_get_parent_question_id()` helpers
+- Modified `submit_answer()`:
+  - Only evaluates text-type answers (select/multiselect skip evaluation entirely)
+  - If follow-up needed: sets current_question to follow-up, increments follow_up_count
+  - If no follow-up: resets follow_up_count to 0, advances to next core question
+- Modified POST /answer response: includes `follow_up` field when `needs_follow_up=True`
+- Updated 4 existing T11 tests to mock `evaluate_and_maybe_follow_up` (needed because real API key in env triggers actual follow-ups)
+- Added 6 new T12 tests (all mock OpenAI via `unittest.mock.patch`)
+
+**Tests**:
+- [x] Automated: `test_short_answer_triggers_follow_up` — "sim" → followup_core_1_1 with phase="follow_up" (PASSED)
+- [x] Automated: `test_detailed_answer_no_follow_up` — detailed text → advances to core_2 (PASSED)
+- [x] Automated: `test_follow_up_answer_stored` — both original + follow-up answers in state (PASSED)
+- [x] Automated: `test_max_follow_ups` — after 2 follow-ups, advances to core_2 without LLM call (PASSED)
+- [x] Automated: `test_select_question_no_follow_up` — multiselect/select skip evaluation entirely (PASSED)
+- [x] Automated: `test_follow_up_endpoint_response` — response has both next_question and follow_up fields (PASSED)
+- [x] Full suite: 49/49 tests passing (no regressions)
+- [x] Manual: Full flow via curl:
+  - POST /sessions → created session
+  - GET /interview/next → core_1 (text)
+  - POST /answer "sim" → followup_core_1_1 ("Você pode descrever quais produtos...") with follow_up field
+  - POST /answer followup_core_1_1 (detailed) → followup_core_1_2 (LLM wanted more detail on automation)
+  - POST /answer followup_core_1_2 → core_2 (max follow-ups reached, advanced normally)
+  - Session state: 3 answers stored, follow_up_count reset to 0, current=core_2
+
+**Issues found**:
+- **Old T11 tests broke**: Because `OPENAI_API_KEY` is in the env, `submit_answer` now triggers real follow-up evaluation. Fixed by patching `evaluate_and_maybe_follow_up` to return `(False, None)` in old tests that test answer advancement (not follow-up behavior).
+
+**Next steps**:
+- Move to T13: Dynamic question generation
+
+---
+
 ### 2026-02-19 — T11: Interview "submit answer" endpoint
 
 **Status**: completed

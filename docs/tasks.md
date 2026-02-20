@@ -364,7 +364,7 @@
 **Manual tests**:
 - In Swagger: answer a question briefly → see AI follow-up. Then answer in detail → see it move to next question
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -788,7 +788,7 @@
 | T09 | LangGraph interview state + basic graph | M2 | T08 | `done` |
 | T10 | Interview "next question" endpoint | M2 | T04, T09 | `done` |
 | T11 | Interview "submit answer" endpoint | M2 | T10 | `done` |
-| T12 | AI follow-up evaluation + generation | M2 | T11 | `pending` |
+| T12 | AI follow-up evaluation + generation | M2 | T11 | `done` |
 | T13 | Dynamic question generation | M2 | T12 | `pending` |
 | T14 | Interview progress endpoint + completion | M2 | T13 | `pending` |
 | T15 | Smart defaults confirmation endpoint | M2 | T14 | `pending` |

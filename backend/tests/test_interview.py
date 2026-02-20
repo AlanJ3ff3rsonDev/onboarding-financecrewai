@@ -276,12 +276,15 @@ def test_interview_next_session_not_found(client: TestClient) -> None:
 @pytest.mark.asyncio
 async def test_submit_answer_service():
     """submit_answer stores the answer and advances to next question."""
+    from unittest.mock import patch, AsyncMock
+
     state = await create_interview()
     assert state["current_question"]["question_id"] == "core_1"
 
-    next_q, new_state = await submit_answer(
-        state, "core_1", "Software de gestão", "text"
-    )
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        next_q, new_state = await submit_answer(
+            state, "core_1", "Software de gestão", "text"
+        )
     assert next_q is not None
     assert next_q.question_id == "core_2"
     assert len(new_state["answers"]) == 1
@@ -300,6 +303,8 @@ async def test_submit_answer_wrong_question_id():
 
 def test_submit_answer_endpoint(client: TestClient) -> None:
     """POST /interview/answer stores answer and returns next question."""
+    from unittest.mock import patch, AsyncMock
+
     resp = client.post(
         "/api/v1/sessions",
         json={"company_name": "TestCorp", "website": "https://test.com"},
@@ -309,11 +314,12 @@ def test_submit_answer_endpoint(client: TestClient) -> None:
     # Initialize interview
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
 
-    # Submit answer to core_1
-    resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/answer",
-        json={"question_id": "core_1", "answer": "Vendemos software de cobrança", "source": "text"},
-    )
+    # Submit answer to core_1 (mock follow-up to skip evaluation)
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        resp = client.post(
+            f"/api/v1/sessions/{session_id}/interview/answer",
+            json={"question_id": "core_1", "answer": "Vendemos software de cobrança", "source": "text"},
+        )
     assert resp.status_code == 200
     data = resp.json()
     assert data["received"] is True
@@ -322,6 +328,8 @@ def test_submit_answer_endpoint(client: TestClient) -> None:
 
 def test_submit_answer_chain(client: TestClient) -> None:
     """Submit answers to core_1 through core_3 — each returns next question."""
+    from unittest.mock import patch, AsyncMock
+
     resp = client.post(
         "/api/v1/sessions",
         json={"company_name": "TestCorp", "website": "https://test.com"},
@@ -336,15 +344,16 @@ def test_submit_answer_chain(client: TestClient) -> None:
         ("core_2", "PIX e boleto"),
         ("core_3", "Pessoas físicas com dívidas"),
     ]
-    for qid, answer in answers:
-        resp = client.post(
-            f"/api/v1/sessions/{session_id}/interview/answer",
-            json={"question_id": qid, "answer": answer, "source": "text"},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["received"] is True
-        assert data["next_question"] is not None
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        for qid, answer in answers:
+            resp = client.post(
+                f"/api/v1/sessions/{session_id}/interview/answer",
+                json={"question_id": qid, "answer": answer, "source": "text"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["received"] is True
+            assert data["next_question"] is not None
 
     # After core_3, next should be core_4
     assert data["next_question"]["question_id"] == "core_4"
@@ -352,18 +361,21 @@ def test_submit_answer_chain(client: TestClient) -> None:
 
 def test_answer_stored_in_session(client: TestClient) -> None:
     """After submitting, answer appears in session's interview_responses."""
+    from unittest.mock import patch, AsyncMock
+
     resp = client.post(
         "/api/v1/sessions",
         json={"company_name": "TestCorp", "website": "https://test.com"},
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize and answer
+    # Initialize and answer (mock follow-up to skip evaluation)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
-    client.post(
-        f"/api/v1/sessions/{session_id}/interview/answer",
-        json={"question_id": "core_1", "answer": "Financiamento automotivo", "source": "text"},
-    )
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        client.post(
+            f"/api/v1/sessions/{session_id}/interview/answer",
+            json={"question_id": "core_1", "answer": "Financiamento automotivo", "source": "text"},
+        )
 
     # Check session
     session_resp = client.get(f"/api/v1/sessions/{session_id}")
@@ -423,3 +435,255 @@ def test_submit_answer_interview_not_started(client: TestClient) -> None:
     )
     assert resp.status_code == 400
     assert "not started" in resp.json()["detail"].lower()
+
+
+# ---------- T12: AI follow-up evaluation + generation ----------
+
+
+def _mock_openai_response(content: str):
+    """Build a mock OpenAI chat completion response."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    choice = MagicMock()
+    choice.message.content = content
+    response = MagicMock()
+    response.choices = [choice]
+
+    client_instance = AsyncMock()
+    client_instance.chat.completions.create = AsyncMock(return_value=response)
+    return client_instance
+
+
+@pytest.mark.asyncio
+async def test_short_answer_triggers_follow_up():
+    """'sim' to core_1 (text) → returns followup_core_1_1 with phase='follow_up'."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+    assert state["current_question"]["question_id"] == "core_1"
+
+    mock_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode descrever com mais detalhes os produtos ou serviços que sua empresa oferece?",
+        "reason": "Resposta muito curta, precisa de mais detalhes",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, new_state = await submit_answer(state, "core_1", "sim", "text")
+
+    assert next_q is not None
+    assert next_q.question_id == "followup_core_1_1"
+    assert next_q.phase == "follow_up"
+    assert next_q.is_required is False
+    assert next_q.question_type == "text"
+    assert new_state["needs_follow_up"] is True
+    assert new_state["follow_up_count"] == 1
+    assert len(new_state["answers"]) == 1
+    assert new_state["answers"][0]["answer"] == "sim"
+
+
+@pytest.mark.asyncio
+async def test_detailed_answer_no_follow_up():
+    """Detailed paragraph to core_1 → advances to core_2 normally."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+
+    mock_response = json.dumps({
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "reason": "Resposta detalhada e suficiente",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, new_state = await submit_answer(
+                state, "core_1",
+                "Vendemos software de gestão financeira para PMEs, incluindo módulos de contas a receber, fluxo de caixa e cobrança automatizada.",
+                "text",
+            )
+
+    assert next_q is not None
+    assert next_q.question_id == "core_2"
+    assert new_state["needs_follow_up"] is False
+    assert new_state["follow_up_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_follow_up_answer_stored():
+    """Answer follow-up → both answers in state, then advances to core_2."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+
+    # First: short answer triggers follow-up
+    fu_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode descrever melhor?",
+        "reason": "Muito curto",
+    })
+    mock_client = _mock_openai_response(fu_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, state2 = await submit_answer(state, "core_1", "sim", "text")
+
+    assert next_q.question_id == "followup_core_1_1"
+    assert len(state2["answers"]) == 1
+
+    # Second: answer the follow-up with detail → no more follow-up, advance to core_2
+    no_fu_response = json.dumps({
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "reason": "Agora está detalhado",
+    })
+    mock_client2 = _mock_openai_response(no_fu_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client2):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q2, state3 = await submit_answer(
+                state2, "followup_core_1_1",
+                "Vendemos software de gestão financeira com módulos de cobrança e conciliação",
+                "text",
+            )
+
+    assert next_q2 is not None
+    assert next_q2.question_id == "core_2"
+    assert len(state3["answers"]) == 2
+    assert state3["answers"][0]["question_id"] == "core_1"
+    assert state3["answers"][1]["question_id"] == "followup_core_1_1"
+    assert state3["follow_up_count"] == 0
+    assert state3["needs_follow_up"] is False
+
+
+@pytest.mark.asyncio
+async def test_max_follow_ups():
+    """After 2 follow-ups, third answer advances to next core (no LLM call)."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+
+    # Simulate 2 follow-ups already done
+    fu_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode detalhar mais?",
+        "reason": "Curto",
+    })
+    mock_client = _mock_openai_response(fu_response)
+
+    # Follow-up 1
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, state2 = await submit_answer(state, "core_1", "sim", "text")
+    assert next_q.question_id == "followup_core_1_1"
+    assert state2["follow_up_count"] == 1
+
+    # Follow-up 2
+    mock_client2 = _mock_openai_response(fu_response)
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client2):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q2, state3 = await submit_answer(state2, "followup_core_1_1", "talvez", "text")
+    assert next_q2.question_id == "followup_core_1_2"
+    assert state3["follow_up_count"] == 2
+
+    # Third answer to second follow-up — max reached, should advance to core_2 without LLM call
+    # follow_up_count is already 2 (== MAX), so evaluate_and_maybe_follow_up returns (False, None)
+    # No LLM call needed, but patch anyway to verify it's NOT called
+    mock_client3 = _mock_openai_response(fu_response)
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client3) as mock_cls:
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q3, state4 = await submit_answer(state3, "followup_core_1_2", "ok detalhe aqui", "text")
+
+    assert next_q3.question_id == "core_2"
+    assert state4["follow_up_count"] == 0
+    assert state4["needs_follow_up"] is False
+    # LLM should not have been called (max follow-ups reached)
+    mock_client3.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_select_question_no_follow_up():
+    """Select-type question (core_3) skips follow-up evaluation entirely."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+
+    # Advance to core_3 (select type) — answer core_1 and core_2 first without follow-ups
+    no_fu = json.dumps({"needs_follow_up": False, "follow_up_question": None, "reason": "ok"})
+    mock_client = _mock_openai_response(no_fu)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            _, state2 = await submit_answer(state, "core_1", "Software de gestão financeira com vários módulos", "text")
+
+    # core_2 is multiselect — answer it (should skip evaluation)
+    mock_client2 = _mock_openai_response(no_fu)
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client2) as mock_cls:
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, state3 = await submit_answer(state2, "core_2", "pix,boleto", "text")
+
+    assert next_q.question_id == "core_3"
+    # LLM should NOT have been called for multiselect
+    mock_client2.chat.completions.create.assert_not_called()
+
+    # core_3 is select — answer it
+    mock_client3 = _mock_openai_response(no_fu)
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client3) as mock_cls3:
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q2, state4 = await submit_answer(state3, "core_3", "d5", "text")
+
+    assert next_q2.question_id == "core_4"
+    # LLM should NOT have been called for select
+    mock_client3.chat.completions.create.assert_not_called()
+
+
+def test_follow_up_endpoint_response(client: TestClient) -> None:
+    """POST /answer with follow-up → response has both next_question and follow_up fields."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize interview
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Mock OpenAI to trigger follow-up
+    fu_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode descrever melhor seus produtos?",
+        "reason": "Muito curto",
+    })
+    mock_client = _mock_openai_response(fu_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            resp = client.post(
+                f"/api/v1/sessions/{session_id}/interview/answer",
+                json={"question_id": "core_1", "answer": "sim", "source": "text"},
+            )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["received"] is True
+    assert data["next_question"]["question_id"] == "followup_core_1_1"
+    assert data["next_question"]["phase"] == "follow_up"
+    # follow_up field present for follow-up responses
+    assert "follow_up" in data
+    assert data["follow_up"]["question_id"] == "followup_core_1_1"

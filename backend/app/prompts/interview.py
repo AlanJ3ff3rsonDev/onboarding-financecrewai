@@ -188,3 +188,31 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
 }
 
 SMART_DEFAULTS = SmartDefaults()
+
+FOLLOW_UP_EVALUATION_PROMPT = """\
+Você é um especialista em onboarding de agentes de cobrança. Está avaliando se a resposta \
+de um cliente a uma pergunta é detalhada o suficiente para configurar um agente de cobrança \
+de qualidade.
+
+## Pergunta feita
+{question_text}
+
+## Resposta do cliente
+{answer}
+
+## Contexto (respostas anteriores)
+{answers_context}
+
+## Instrução
+Avalie se a resposta é suficientemente detalhada para configurar um bom agente de cobrança. \
+Respostas curtas ou vagas (como "sim", "normal", "não sei", "talvez") geralmente precisam \
+de aprofundamento. Respostas com detalhes específicos, exemplos ou explicações claras são \
+suficientes.
+
+Responda EXCLUSIVAMENTE com um objeto JSON válido no formato:
+{{"needs_follow_up": true/false, "follow_up_question": "pergunta de aprofundamento ou null", "reason": "motivo breve"}}
+
+Se needs_follow_up for false, follow_up_question deve ser null.
+Se needs_follow_up for true, gere uma pergunta de aprofundamento natural, específica e em \
+português que ajude a extrair mais detalhes úteis para configurar o agente de cobrança.
+"""

@@ -83,7 +83,10 @@ async def post_submit_answer(
     db.commit()
 
     if next_question is not None:
-        return {"received": True, "next_question": next_question.model_dump()}
+        result: dict = {"received": True, "next_question": next_question.model_dump()}
+        if new_state.get("needs_follow_up"):
+            result["follow_up"] = next_question.model_dump()
+        return result
 
     return {
         "received": True,

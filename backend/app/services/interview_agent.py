@@ -1,14 +1,19 @@
 """LangGraph interview orchestration service."""
 
+import json
 import logging
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from openai import AsyncOpenAI, OpenAIError
 
+from app.config import settings
 from app.models.schemas import InterviewQuestion
-from app.prompts.interview import CORE_QUESTIONS
+from app.prompts.interview import CORE_QUESTIONS, FOLLOW_UP_EVALUATION_PROMPT
 
 logger = logging.getLogger(__name__)
+
+MAX_FOLLOW_UPS_PER_QUESTION = 2
 
 # ---------- Pre-fill mapping: question_id -> (enrichment_field, context_hint_template) ----------
 
@@ -32,6 +37,7 @@ class InterviewState(TypedDict):
     phase: str  # "core" | "dynamic" | "defaults" | "complete"
     needs_follow_up: bool
     follow_up_question: dict | None
+    follow_up_count: int
 
 
 # ---------- Pre-fill helper ----------
@@ -68,6 +74,7 @@ def initialize(state: InterviewState) -> dict:
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
+        "follow_up_count": 0,
     }
 
 
@@ -163,7 +170,100 @@ def deserialize_state(data: dict) -> InterviewState:
         phase=data.get("phase", "core"),
         needs_follow_up=data.get("needs_follow_up", False),
         follow_up_question=data.get("follow_up_question"),
+        follow_up_count=data.get("follow_up_count", 0),
     )
+
+
+# ---------- Follow-up evaluation ----------
+
+
+def _build_answers_context(answers: list[dict]) -> str:
+    """Format previous answers as bullet list for LLM context."""
+    if not answers:
+        return "Nenhuma resposta anterior."
+    lines = []
+    for a in answers:
+        lines.append(f"- {a.get('question_text', a.get('question_id', '?'))}: {a.get('answer', '')}")
+    return "\n".join(lines)
+
+
+def _get_parent_question_id(question_id: str) -> str:
+    """Extract the parent core question ID from a follow-up ID.
+
+    e.g. 'followup_core_1_1' -> 'core_1', 'core_4' -> 'core_4'
+    """
+    if question_id.startswith("followup_"):
+        # followup_core_1_1 -> core_1
+        parts = question_id.split("_")
+        # parts = ['followup', 'core', '1', '1'] -> 'core_1'
+        if len(parts) >= 3:
+            return f"{parts[1]}_{parts[2]}"
+    return question_id
+
+
+async def evaluate_and_maybe_follow_up(
+    state: InterviewState,
+    question_id: str,
+    answer: str,
+) -> tuple[bool, dict | None]:
+    """Evaluate if an answer needs deepening and generate a follow-up question.
+
+    Returns:
+        Tuple of (needs_follow_up, follow_up_question_dict or None).
+        On any error or when follow-ups are exhausted, returns (False, None).
+    """
+    follow_up_count = state.get("follow_up_count", 0)
+    if follow_up_count >= MAX_FOLLOW_UPS_PER_QUESTION:
+        return False, None
+
+    if not settings.OPENAI_API_KEY:
+        return False, None
+
+    current = state.get("current_question", {})
+    question_text = current.get("question_text", "") if current else ""
+
+    prompt = FOLLOW_UP_EVALUATION_PROMPT.format(
+        question_text=question_text,
+        answer=answer,
+        answers_context=_build_answers_context(state.get("answers", [])),
+    )
+
+    try:
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        response = await client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+        )
+        data = json.loads(response.choices[0].message.content)
+    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
+        logger.warning("Follow-up evaluation failed: %s", exc)
+        return False, None
+
+    if not data.get("needs_follow_up", False):
+        return False, None
+
+    follow_up_text = data.get("follow_up_question")
+    if not follow_up_text:
+        return False, None
+
+    parent_id = _get_parent_question_id(question_id)
+    new_count = follow_up_count + 1
+
+    follow_up_question = {
+        "question_id": f"followup_{parent_id}_{new_count}",
+        "question_text": follow_up_text,
+        "question_type": "text",
+        "options": None,
+        "pre_filled_value": None,
+        "is_required": False,
+        "supports_audio": True,
+        "phase": "follow_up",
+        "context_hint": None,
+    }
+
+    return True, follow_up_question
 
 
 # ---------- Public API ----------
@@ -189,6 +289,7 @@ async def create_interview(enrichment_data: dict | None = None) -> InterviewStat
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
+        "follow_up_count": 0,
     }
 
     graph = _build_full_graph().compile()
@@ -243,9 +344,35 @@ async def submit_answer(
         phase=state["phase"],
         needs_follow_up=state["needs_follow_up"],
         follow_up_question=state["follow_up_question"],
+        follow_up_count=state.get("follow_up_count", 0),
     )
 
-    # Advance to next question
+    # Follow-up evaluation for text-type answers only
+    question_type = current.get("question_type", "text")
+    if question_type == "text":
+        needs_fu, fu_question = await evaluate_and_maybe_follow_up(
+            updated_state, question_id, answer,
+        )
+        if needs_fu and fu_question:
+            updated_state = InterviewState(
+                **{**dict(updated_state),
+                   "current_question": fu_question,
+                   "follow_up_count": updated_state.get("follow_up_count", 0) + 1,
+                   "needs_follow_up": True,
+                   "follow_up_question": fu_question,
+                   }
+            )
+            question = InterviewQuestion.model_validate(fu_question)
+            return question, updated_state
+
+    # No follow-up needed — reset count and advance to next question
+    updated_state = InterviewState(
+        **{**dict(updated_state),
+           "follow_up_count": 0,
+           "needs_follow_up": False,
+           "follow_up_question": None,
+           }
+    )
     return await get_next_question(updated_state)
 
 
