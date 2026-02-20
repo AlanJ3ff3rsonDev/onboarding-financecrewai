@@ -1,12 +1,14 @@
 """Interview question flow endpoints."""
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.orm import OnboardingSession
-from app.models.schemas import InterviewProgressResponse, InterviewQuestion, SubmitAnswerRequest
-from app.prompts.interview import CORE_QUESTIONS
+from app.models.schemas import InterviewProgressResponse, InterviewQuestion, SmartDefaults, SubmitAnswerRequest
+from app.prompts.interview import CORE_QUESTIONS, SMART_DEFAULTS
 from app.services.interview_agent import (
     create_interview,
     deserialize_state,
@@ -173,3 +175,86 @@ async def get_interview_progress(
         estimated_remaining=estimated_remaining,
         is_complete=is_complete,
     )
+
+
+_HOURS_RE = re.compile(r"^(\d{2}):(\d{2})-(\d{2}):(\d{2})$")
+
+
+def _validate_contact_hours(value: str, field_name: str) -> None:
+    """Validate HH:MM-HH:MM format and 06:00-22:00 legal range."""
+    m = _HOURS_RE.match(value)
+    if not m:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name}: formato inválido. Use HH:MM-HH:MM (ex: 08:00-20:00)",
+        )
+    start_h, start_m, end_h, end_m = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+    if start_m >= 60 or end_m >= 60:
+        raise HTTPException(status_code=400, detail=f"{field_name}: minutos inválidos")
+    start_total = start_h * 60 + start_m
+    end_total = end_h * 60 + end_m
+    if start_total < 6 * 60 or end_total > 22 * 60:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name}: horário deve estar entre 06:00 e 22:00",
+        )
+    if start_total >= end_total:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name}: horário de início deve ser antes do horário de fim",
+        )
+
+
+@router.get("/{session_id}/interview/defaults")
+async def get_defaults(
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> dict:
+    session = db.get(OnboardingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.interview_state is None:
+        raise HTTPException(status_code=400, detail="Interview not started")
+
+    if session.smart_defaults:
+        return {"defaults": session.smart_defaults, "confirmed": True}
+
+    return {"defaults": SMART_DEFAULTS.model_dump(), "confirmed": False}
+
+
+@router.post("/{session_id}/interview/defaults")
+async def confirm_defaults(
+    session_id: str,
+    body: SmartDefaults,
+    db: Session = Depends(get_db),
+) -> dict:
+    session = db.get(OnboardingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.interview_state is None:
+        raise HTTPException(status_code=400, detail="Interview not started")
+
+    state = deserialize_state(session.interview_state)
+    if state["phase"] not in ("defaults", "complete"):
+        raise HTTPException(
+            status_code=400,
+            detail="Entrevista ainda não concluída. Finalize as perguntas antes de confirmar os padrões.",
+        )
+
+    _validate_contact_hours(body.contact_hours_weekday, "contact_hours_weekday")
+    _validate_contact_hours(body.contact_hours_saturday, "contact_hours_saturday")
+
+    session.smart_defaults = body.model_dump()
+    state["phase"] = "complete"
+    session.interview_state = serialize_state(state)
+    if session.status != "interviewed":
+        session.status = "interviewed"
+    db.commit()
+
+    return {
+        "confirmed": True,
+        "defaults": session.smart_defaults,
+        "phase": "complete",
+    }

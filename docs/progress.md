@@ -64,6 +64,42 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T15: Smart defaults confirmation endpoint
+
+**Status**: completed
+
+**What was done**:
+- Added `GET /api/v1/sessions/{id}/interview/defaults` to `app/routers/interview.py`:
+  - Returns `SMART_DEFAULTS` (pre-filled) if no confirmation yet (`confirmed: false`)
+  - Returns `session.smart_defaults` if already confirmed (`confirmed: true`)
+  - 400 if interview not started, 404 if session not found
+- Added `POST /api/v1/sessions/{id}/interview/defaults` to `app/routers/interview.py`:
+  - Accepts `SmartDefaults` as request body (Pydantic auto-validates ge/le/Literal constraints → 422 on invalid)
+  - Phase gate: requires `"defaults"` or `"complete"` phase, 400 if `"core"` or `"dynamic"`
+  - Custom validation for `contact_hours_weekday` and `contact_hours_saturday`: HH:MM-HH:MM format, 06:00-22:00 legal range, start < end
+  - Stores confirmed defaults in `session.smart_defaults`, transitions phase to `"complete"`, sets status to `"interviewed"`
+- Added `_validate_contact_hours()` helper with regex + range checks
+- Added 8 tests to `tests/test_interview.py` + `_session_in_defaults_phase()` helper
+
+**Tests**:
+- [x] Automated: `test_get_defaults` — session in defaults phase → all 11 defaults with correct values (PASSED)
+- [x] Automated: `test_get_defaults_not_started` — no interview_state → 400 (PASSED)
+- [x] Automated: `test_confirm_defaults` — POST defaults → stored in DB, phase → "complete", GET returns confirmed=true (PASSED)
+- [x] Automated: `test_adjust_defaults` — POST with modified values (interval=5, attempts=15, strategy=proactive) → stored correctly (PASSED)
+- [x] Automated: `test_defaults_validation_pydantic` — negative installment, bad strategy, pct>50 → 422 (PASSED)
+- [x] Automated: `test_defaults_validation_hours` — hours before 06:00, after 22:00, bad format → 400 (PASSED)
+- [x] Automated: `test_confirm_defaults_wrong_phase` — POST when phase="core" → 400 (PASSED)
+- [x] Automated: `test_defaults_session_not_found` — GET/POST on nonexistent session → 404 (PASSED)
+- [x] Full suite: 71/71 tests passing (no regressions)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T16: Audio transcription service
+
+---
+
 ### 2026-02-20 — T14: Interview progress endpoint + completion
 
 **Status**: completed

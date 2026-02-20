@@ -1196,3 +1196,277 @@ def test_progress_session_not_found(client: TestClient) -> None:
     """GET /interview/progress for non-existent session → 404."""
     resp = client.get("/api/v1/sessions/nonexistent-id/interview/progress")
     assert resp.status_code == 404
+
+
+# ---------- T15: Smart defaults confirmation endpoint ----------
+
+
+def _session_in_defaults_phase(client: TestClient) -> str:
+    """Helper: create a session with interview_state in 'defaults' phase. Returns session_id."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+    from app.services.interview_agent import serialize_state
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    db = next(app.dependency_overrides[get_db]())
+    session = db.get(OnboardingSession, session_id)
+    state = {
+        "enrichment_data": {},
+        "core_questions_remaining": [],
+        "current_question": None,
+        "answers": [
+            {"question_id": f"core_{i}", "answer": f"Resp {i}",
+             "source": "text", "question_text": f"Q{i}"}
+            for i in range(1, 13)
+        ],
+        "dynamic_questions_asked": 5,
+        "max_dynamic_questions": 8,
+        "phase": "defaults",
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "follow_up_count": 0,
+    }
+    session.interview_state = serialize_state(state)
+    session.status = "interviewing"
+    db.commit()
+    db.close()
+    return session_id
+
+
+def test_get_defaults(client: TestClient) -> None:
+    """Session in defaults phase → GET returns all 11 default values."""
+    session_id = _session_in_defaults_phase(client)
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confirmed"] is False
+    defaults = data["defaults"]
+    assert defaults["contact_hours_weekday"] == "08:00-20:00"
+    assert defaults["contact_hours_saturday"] == "08:00-14:00"
+    assert defaults["contact_sunday"] is False
+    assert defaults["follow_up_interval_days"] == 3
+    assert defaults["max_contact_attempts"] == 10
+    assert defaults["use_first_name"] is True
+    assert defaults["identify_as_ai"] is True
+    assert defaults["min_installment_value"] == 50.0
+    assert defaults["discount_strategy"] == "only_when_resisted"
+    assert defaults["payment_link_generation"] is True
+    assert defaults["max_discount_installment_pct"] == 5.0
+
+
+def test_get_defaults_not_started(client: TestClient) -> None:
+    """No interview_state → GET defaults returns 400."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    assert resp.status_code == 400
+    assert "not started" in resp.json()["detail"].lower()
+
+
+def test_confirm_defaults(client: TestClient) -> None:
+    """POST with default values → stored in DB, phase → 'complete'."""
+    session_id = _session_in_defaults_phase(client)
+
+    defaults_body = {
+        "contact_hours_weekday": "08:00-20:00",
+        "contact_hours_saturday": "08:00-14:00",
+        "contact_sunday": False,
+        "follow_up_interval_days": 3,
+        "max_contact_attempts": 10,
+        "use_first_name": True,
+        "identify_as_ai": True,
+        "min_installment_value": 50.0,
+        "discount_strategy": "only_when_resisted",
+        "payment_link_generation": True,
+        "max_discount_installment_pct": 5.0,
+    }
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json=defaults_body,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confirmed"] is True
+    assert data["phase"] == "complete"
+    assert data["defaults"]["follow_up_interval_days"] == 3
+
+    # Verify stored in DB via GET
+    resp2 = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    assert resp2.status_code == 200
+    assert resp2.json()["confirmed"] is True
+    assert resp2.json()["defaults"]["follow_up_interval_days"] == 3
+
+    # Verify session status
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert session_resp.json()["status"] == "interviewed"
+
+
+def test_adjust_defaults(client: TestClient) -> None:
+    """POST with modified values → new values stored."""
+    session_id = _session_in_defaults_phase(client)
+
+    adjusted = {
+        "contact_hours_weekday": "09:00-18:00",
+        "contact_hours_saturday": "09:00-12:00",
+        "contact_sunday": False,
+        "follow_up_interval_days": 5,
+        "max_contact_attempts": 15,
+        "use_first_name": False,
+        "identify_as_ai": True,
+        "min_installment_value": 100.0,
+        "discount_strategy": "proactive",
+        "payment_link_generation": False,
+        "max_discount_installment_pct": 10.0,
+    }
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json=adjusted,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["confirmed"] is True
+    assert data["defaults"]["follow_up_interval_days"] == 5
+    assert data["defaults"]["max_contact_attempts"] == 15
+    assert data["defaults"]["discount_strategy"] == "proactive"
+    assert data["defaults"]["min_installment_value"] == 100.0
+    assert data["defaults"]["contact_hours_weekday"] == "09:00-18:00"
+    assert data["defaults"]["use_first_name"] is False
+
+
+def test_defaults_validation_pydantic(client: TestClient) -> None:
+    """POST with invalid Pydantic values (negative installment, bad strategy) → 422."""
+    session_id = _session_in_defaults_phase(client)
+
+    # Negative min_installment_value
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={
+            "contact_hours_weekday": "08:00-20:00",
+            "contact_hours_saturday": "08:00-14:00",
+            "min_installment_value": -10.0,
+        },
+    )
+    assert resp.status_code == 422
+
+    # Invalid discount_strategy
+    resp2 = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={
+            "contact_hours_weekday": "08:00-20:00",
+            "contact_hours_saturday": "08:00-14:00",
+            "discount_strategy": "invalid_strategy",
+        },
+    )
+    assert resp2.status_code == 422
+
+    # max_discount_installment_pct > 50
+    resp3 = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={
+            "contact_hours_weekday": "08:00-20:00",
+            "contact_hours_saturday": "08:00-14:00",
+            "max_discount_installment_pct": 60.0,
+        },
+    )
+    assert resp3.status_code == 422
+
+
+def test_defaults_validation_hours(client: TestClient) -> None:
+    """POST with invalid contact hours → 400."""
+    session_id = _session_in_defaults_phase(client)
+
+    # Hours outside legal range (before 06:00)
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={"contact_hours_weekday": "05:00-20:00"},
+    )
+    assert resp.status_code == 400
+    assert "06:00" in resp.json()["detail"]
+
+    # Hours outside legal range (after 22:00)
+    resp2 = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={"contact_hours_weekday": "08:00-23:00"},
+    )
+    assert resp2.status_code == 400
+
+    # Bad format
+    resp3 = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={"contact_hours_weekday": "8-20"},
+    )
+    assert resp3.status_code == 400
+    assert "formato" in resp3.json()["detail"].lower()
+
+
+def test_confirm_defaults_wrong_phase(client: TestClient) -> None:
+    """POST when phase='core' → 400."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+    from app.services.interview_agent import serialize_state
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Set interview_state to core phase
+    db = next(app.dependency_overrides[get_db]())
+    session = db.get(OnboardingSession, session_id)
+    state = {
+        "enrichment_data": {},
+        "core_questions_remaining": [
+            {"question_id": f"core_{i}", "question_text": f"Q{i}",
+             "question_type": "text", "options": None, "pre_filled_value": None,
+             "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None}
+            for i in range(2, 13)
+        ],
+        "current_question": {
+            "question_id": "core_1", "question_text": "Q1",
+            "question_type": "text", "options": None, "pre_filled_value": None,
+            "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None,
+        },
+        "answers": [],
+        "dynamic_questions_asked": 0,
+        "max_dynamic_questions": 8,
+        "phase": "core",
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "follow_up_count": 0,
+    }
+    session.interview_state = serialize_state(state)
+    session.status = "interviewing"
+    db.commit()
+    db.close()
+
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/defaults",
+        json={"contact_hours_weekday": "08:00-20:00", "contact_hours_saturday": "08:00-14:00"},
+    )
+    assert resp.status_code == 400
+    assert "não concluída" in resp.json()["detail"].lower()
+
+
+def test_defaults_session_not_found(client: TestClient) -> None:
+    """GET/POST on nonexistent session → 404."""
+    resp = client.get("/api/v1/sessions/nonexistent-id/interview/defaults")
+    assert resp.status_code == 404
+
+    resp2 = client.post(
+        "/api/v1/sessions/nonexistent-id/interview/defaults",
+        json={"contact_hours_weekday": "08:00-20:00", "contact_hours_saturday": "08:00-14:00"},
+    )
+    assert resp2.status_code == 404

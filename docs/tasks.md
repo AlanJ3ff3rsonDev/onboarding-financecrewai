@@ -451,7 +451,7 @@
 **Manual tests**:
 - In Swagger: GET defaults → see pre-filled values → POST with some adjustments → verify stored correctly
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
