@@ -71,7 +71,7 @@ Track bugs or problems that need attention but aren't blocking current work.
 **What was done**:
 - Implemented `app/services/transcription.py` with `transcribe_audio(file_bytes, content_type) -> dict`:
   - Validates file is not empty, not > 25 MB, and has an allowed MIME type
-  - Allowed types: audio/webm, audio/mp4, video/mp4, audio/wav, audio/x-wav, audio/mpeg, audio/mp3
+  - Allowed types: audio/webm, audio/mp4, video/mp4, audio/wav, audio/x-wav, audio/mpeg, audio/mp3, audio/ogg, audio/flac, audio/x-m4a, audio/m4a
   - Uses `AsyncOpenAI` with model `gpt-4o-mini-transcribe`, language `"pt"`
   - Retries once on `OpenAIError`, then raises `ValueError` with user-friendly message
   - Returns `{"text": str, "duration_seconds": float}`
