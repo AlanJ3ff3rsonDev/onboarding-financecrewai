@@ -573,7 +573,7 @@
 **Manual tests**:
 - Print a generated prompt, read it, verify it would produce a good agent config
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -795,7 +795,7 @@
 | T16 | Audio transcription service | M2 | T01 | `done` |
 | T17 | Audio upload endpoint | M2 | T04, T16 | `done` |
 | T18 | AgentConfig Pydantic schema | M3 | — | `done` |
-| T19 | Agent generation prompt | M3 | T18 | `pending` |
+| T19 | Agent generation prompt | M3 | T18 | `done` |
 | T20 | Agent generation service + sanity checks | M3 | T19 | `pending` |
 | T21 | Agent generation endpoint | M3 | T04, T20 | `pending` |
 | T22 | Agent adjustment endpoint | M3 | T21 | `pending` |

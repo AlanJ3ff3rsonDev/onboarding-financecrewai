@@ -65,6 +65,45 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T19: Agent generation prompt
+
+**Status**: completed
+
+**What was done**:
+- Implemented `app/prompts/agent_generator.py` with:
+  - `SYSTEM_PROMPT`: English-language system message defining the LLM's role as an expert debt collection agent configurator for Brazilian businesses. Emphasizes `system_prompt` field as the crown jewel (300+ words, segment-specific, Portuguese).
+  - `build_prompt(company_profile, interview_responses, smart_defaults) -> str`: Assembles all onboarding data into 8 organized sections + mapping hints + full JSON Schema.
+  - 5 helper functions: `_get_answer_by_id()`, `_get_followups()`, `_get_dynamic_responses()`, `_format_answer_with_followups()`, `_build_company_section()`, `_build_defaults_section()`
+- Prompt sections:
+  1. Contexto da Empresa (enrichment data)
+  2. Modelo de Negócio e Faturamento (core_1, core_2, core_3)
+  3. Perfil do Devedor (core_12)
+  4. Processo de Cobrança Atual (core_4)
+  5. Tom e Comunicação (core_5, core_11)
+  6. Regras de Negociação (core_6-9 + smart defaults)
+  7. Guardrails e Escalação (core_10, core_11 + smart defaults)
+  8. Tratamento de Cenários (core_12 + dynamic Qs)
+  - Contexto Adicional (all dynamic/follow-up answers)
+  - Dicas de Mapeamento (tone style mapping, discount mapping, tools guidance)
+  - Esquema JSON de Saída (full AgentConfig.model_json_schema())
+- Module-level `_AGENT_CONFIG_SCHEMA` constant generated from `AgentConfig.model_json_schema()`
+- Graceful handling: None enrichment, empty responses, None defaults all work
+
+**Tests**:
+- [x] Automated: `test_build_prompt` — complete data → substantial prompt string with company name and AgentConfig reference (PASSED)
+- [x] Automated: `test_prompt_includes_all_sections` — all 8 section headings present, key answers (core_1, core_5, core_10, core_11, core_12), follow-ups, dynamic Qs, smart defaults, mapping hints, JSON schema (PASSED)
+- [x] Automated: `test_prompt_handles_missing_data` — None/empty inputs work; partial data (just company_name + 1 answer) works with fallbacks (PASSED)
+- [x] Full suite: 87/87 tests passing (84 existing + 3 new, no regressions)
+- [x] Manual: Generated prompt with realistic data (CollectAI, 12 core + 3 dynamic + follow-ups). Prompt is 11,266 chars, well-organized, includes all interview context.
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T19: Agent generation prompt (when ready)
+
+---
+
 ### 2026-02-20 — T18: AgentConfig Pydantic schema
 
 **Status**: completed
