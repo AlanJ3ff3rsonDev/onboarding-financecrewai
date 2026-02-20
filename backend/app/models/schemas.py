@@ -165,6 +165,36 @@ class AgentConfig(BaseModel):
     metadata: AgentMetadata
 
 
+# --- SimulationResult schemas (T23) ---
+
+
+class SimulationMessage(BaseModel):
+    role: Literal["agent", "debtor"]
+    content: str
+
+
+class SimulationMetrics(BaseModel):
+    negotiated_discount_pct: float | None = None
+    final_installments: int | None = None
+    payment_method: str | None = None
+    resolution: Literal[
+        "full_payment", "installment_plan", "escalated", "no_resolution"
+    ]
+
+
+class SimulationScenario(BaseModel):
+    scenario_type: Literal["cooperative", "resistant"]
+    debtor_profile: str
+    conversation: list[SimulationMessage]
+    outcome: str
+    metrics: SimulationMetrics
+
+
+class SimulationResult(BaseModel):
+    scenarios: list[SimulationScenario]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class AgentAdjustRequest(BaseModel):
     adjustments: dict[str, Any] = Field(
         ...,

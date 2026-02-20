@@ -65,6 +65,42 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T23: Simulation prompt + service
+
+**Status**: completed
+
+**What was done**:
+- Added 5 Pydantic schemas to `app/models/schemas.py`: `SimulationMessage` (role: agent/debtor, content), `SimulationMetrics` (negotiated_discount_pct, final_installments, payment_method, resolution), `SimulationScenario` (scenario_type, debtor_profile, conversation, outcome, metrics), `SimulationResult` (scenarios list, metadata dict)
+- Implemented `app/prompts/simulation.py` with:
+  - `SYSTEM_PROMPT`: English instructions for LLM to generate realistic Portuguese collection conversations following agent config strictly
+  - `_SIMULATION_SCHEMA`: JSON Schema from `SimulationResult.model_json_schema()`
+  - `build_simulation_prompt(agent_config: AgentConfig) -> str`: Assembles 8 sections — system prompt, company context, tone, negotiation policies, guardrails, scenario templates, scenario instructions, output schema
+- Implemented `app/services/simulation.py` with:
+  - `generate_simulation(agent_config, session_id) -> SimulationResult`: Async function calling GPT-4.1-mini with structured JSON output, 2-attempt retry, metadata injection
+  - `_apply_sanity_checks(data) -> list[str]`: Validates scenario count (2) and conversation length (8-15 msgs). Non-fatal warnings only.
+- Added 7 tests to `tests/test_simulation.py`
+
+**Tests**:
+- [x] Automated: `test_build_simulation_prompt` — prompt includes company name, tone, discount limits, guardrails, JSON schema (PASSED)
+- [x] Automated: `test_prompt_includes_scenario_instructions` — prompt includes cooperative/resistant scenario instructions (PASSED)
+- [x] Automated: `test_simulation_schema_valid` — valid data → SimulationResult with 2 scenarios, correct types (PASSED)
+- [x] Automated: `test_simulation_schema_invalid_resolution` — invalid resolution value → ValidationError (PASSED)
+- [x] Automated: `test_generate_simulation` — mock LLM returns valid JSON → SimulationResult with metadata injected (PASSED)
+- [x] Automated: `test_generate_retries_on_failure` — first call fails, second succeeds → returns valid result, 2 calls made (PASSED)
+- [x] Automated: `test_generate_both_attempts_fail` — both calls fail → ValueError "2 tentativas" (PASSED)
+- [x] Full suite: 114/114 tests passing (107 existing + 7 new, no regressions)
+- [x] Manual: Generated simulation with real GPT-4.1-mini using CollectAI agent config:
+  - Scenario 1 (cooperative, 13 msgs): Carlos, R$1,800 debt → negotiated 6x R$285 with 5% discount via PIX. Discounts within limits (≤10% full, ≤5% installment). Tone empathetic, used first name. Resolution: installment_plan ✓
+  - Scenario 2 (resistant, 9 msgs): Mariana contests debt → agent follows dont_recognize_debt template → Mariana demands 50% discount → agent caps at 10% → Mariana gets aggressive → agent follows aggressive_debtor template → escalated. No prohibited words (SPC/Serasa/processo) used. Resolution: escalated ✓
+
+**Issues found**:
+- **First manual test produced short conversations** (7 and 5 messages). Cause: SYSTEM_PROMPT wasn't emphatic enough about message count. **Fix**: Strengthened prompt to say "CRITICAL: minimum 10 messages" and added detailed step-by-step scenario instructions describing the conversation flow. Second test produced 13 and 9 messages (much better).
+
+**Next steps**:
+- Move to T24: Simulation endpoint
+
+---
+
 ### 2026-02-20 — T22: Agent adjustment endpoint
 
 **Status**: completed

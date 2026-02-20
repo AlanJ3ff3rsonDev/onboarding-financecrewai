@@ -698,7 +698,7 @@
 **Manual tests**:
 - Generate simulation for a real agent config → read the conversations → do they feel realistic? Does the agent follow the configured tone and rules?
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -799,6 +799,6 @@
 | T20 | Agent generation service + sanity checks | M3 | T19 | `done` |
 | T21 | Agent generation endpoint | M3 | T04, T20 | `done` |
 | T22 | Agent adjustment endpoint | M3 | T21 | `done` |
-| T23 | Simulation prompt + service | M4 | T18 | `pending` |
+| T23 | Simulation prompt + service | M4 | T18 | `done` |
 | T24 | Simulation endpoint | M4 | T21, T23 | `pending` |
 | T25 | End-to-end integration test | M5 | T24 | `pending` |
