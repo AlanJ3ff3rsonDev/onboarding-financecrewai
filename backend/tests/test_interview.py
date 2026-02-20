@@ -1086,6 +1086,60 @@ def test_progress_midway(client: TestClient) -> None:
     assert data["is_complete"] is False
 
 
+def test_progress_during_follow_up(client: TestClient) -> None:
+    """Progress counts core_answered correctly even when current question is a follow-up."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+    from app.services.interview_agent import serialize_state
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Simulate: core_1 answered, currently on followup_core_1_1 (remaining has 11 items = core_2..core_12)
+    db = next(app.dependency_overrides[get_db]())
+    session = db.get(OnboardingSession, session_id)
+    state = {
+        "enrichment_data": {},
+        "core_questions_remaining": [
+            {"question_id": f"core_{i}", "question_text": f"Q{i}",
+             "question_type": "text", "options": None, "pre_filled_value": None,
+             "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None}
+            for i in range(2, 13)
+        ],
+        "current_question": {
+            "question_id": "followup_core_1_1",
+            "question_text": "Pode detalhar?",
+            "question_type": "text", "options": None, "pre_filled_value": None,
+            "is_required": False, "supports_audio": True, "phase": "follow_up", "context_hint": None,
+        },
+        "answers": [
+            {"question_id": "core_1", "answer": "Software", "source": "text", "question_text": "Q1"},
+        ],
+        "dynamic_questions_asked": 0,
+        "max_dynamic_questions": 8,
+        "phase": "core",
+        "needs_follow_up": True,
+        "follow_up_question": None,
+        "follow_up_count": 1,
+    }
+    session.interview_state = serialize_state(state)
+    session.status = "interviewing"
+    db.commit()
+    db.close()
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["phase"] == "core"
+    # core_1 was answered (popped from remaining), follow-up is current — should count as 1
+    assert data["core_answered"] == 1
+    assert data["total_answered"] == 1
+
+
 def test_progress_defaults_phase(client: TestClient) -> None:
     """When phase='defaults', is_complete=True and session status → 'interviewed'."""
     from app.database import get_db

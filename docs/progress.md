@@ -81,12 +81,19 @@ Track bugs or problems that need attention but aren't blocking current work.
 **Tests**:
 - [x] Automated: `test_progress_not_started` — no interview → phase="not_started", all zeros, core_total=12 (PASSED)
 - [x] Automated: `test_progress_midway` — after 2 core answers → core_answered=2, estimated_remaining>0 (PASSED)
+- [x] Automated: `test_progress_during_follow_up` — current=followup_core_1_1 → core_answered=1 (not 0) (PASSED)
 - [x] Automated: `test_progress_defaults_phase` — phase="defaults" → is_complete=True, status="interviewed" (PASSED)
 - [x] Automated: `test_progress_session_not_found` — 404 (PASSED)
-- [x] Full suite: 62/62 tests passing (no regressions)
+- [x] Full suite: 63/63 tests passing (no regressions)
+- [x] Manual: Full flow via curl with real LLM (GPT-4.1-mini):
+  - Created session → answered all 12 core questions (with follow-ups on core_4, core_11, core_12)
+  - 5 dynamic questions generated before LLM rated confidence >= 7 → phase="defaults"
+  - Progress at each stage verified: not_started(0/12) → core midway(4/12) → core done(12/12) → dynamic(5 asked) → defaults(is_complete=true)
+  - Session status correctly transitioned to "interviewed"
+  - Total: 33 answers (12 core + 5 dynamic + 16 follow-ups)
 
 **Issues found**:
-- None
+- **Bug (found in manual test)**: `core_answered` was 0 when current question was a follow-up (e.g., followup_core_1_1). Cause: progress endpoint subtracted 1 from core_answered whenever `current_question` existed in core phase, but follow-up questions were also counted as "current but unanswered core question". **Fix**: only subtract 1 if `current_question.question_id` starts with "core_". Added `test_progress_during_follow_up` to cover this case.
 
 **Next steps**:
 - Move to T15: Smart defaults confirmation endpoint

@@ -143,9 +143,10 @@ async def get_interview_progress(
     phase = state["phase"]
     core_total = len(CORE_QUESTIONS)
     core_answered = core_total - len(state["core_questions_remaining"])
-    # current_question is already popped from remaining, so subtract 1 if still in core phase
-    # and there's a current core question being displayed (not yet answered)
-    if phase == "core" and state.get("current_question"):
+    # current_question is already popped from remaining, so subtract 1 if it's a core
+    # question being displayed but not yet answered (follow-ups don't count)
+    current = state.get("current_question")
+    if phase == "core" and current and current.get("question_id", "").startswith("core_"):
         core_answered -= 1
     dynamic_answered = state["dynamic_questions_asked"]
     total_answered = len(state["answers"])
