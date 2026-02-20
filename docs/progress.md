@@ -85,12 +85,16 @@ Track bugs or problems that need attention but aren't blocking current work.
 - [x] Automated: `test_transcribe_empty_bytes` — empty bytes → ValueError "vazio" (PASSED)
 - [x] Automated: `test_transcribe_api_error_retries` — first call fails, second succeeds → returns text (PASSED)
 - [x] Automated: `test_transcribe_api_error_exhausted` — both attempts fail → ValueError "Falha na transcrição" (PASSED)
-- [x] Automated: `test_transcribe_all_content_types` — all 7 MIME types accepted, correct file extensions (PASSED)
+- [x] Automated: `test_transcribe_all_content_types` — all 11 MIME types accepted, correct file extensions (PASSED)
 - [x] Full suite: 78/78 tests passing (no regressions)
-- [ ] Manual: T16 is service-only — manual testing will happen via T17 endpoint
+- [x] Manual: Transcribed real audio file (`tests/audio to tests.ogg`, 22KB Ogg Opus) with real OpenAI API:
+  - Input: Portuguese speech (~10s) about a collections company
+  - Output: `"Somos uma empresa que faz cobranças e hoje temos dez pessoas na operação e precisamos reduzir esse número."` ✓
+  - Transcription accurate and complete ✓
 
 **Issues found**:
-- None
+- **Bug (found in manual test)**: `.ogg` format was not in `ALLOWED_CONTENT_TYPES` — user's real audio file (Ogg Opus) would have been rejected with "Formato não suportado". The task spec listed only webm/mp4/wav/mpeg, but OpenAI supports more formats (ogg, flac, m4a). **Fix**: Added `audio/ogg`, `audio/flac`, `audio/x-m4a`, `audio/m4a` to allowed types. Updated error message.
+- **Limitation noted**: `gpt-4o-mini-transcribe` does not return `duration` in its response (only `text` + `usage` tokens). The older `whisper-1` model with `verbose_json` does return duration (tested: 9.75s for the same file). Kept `gpt-4o-mini-transcribe` per tech design (cheaper). `duration_seconds` returns `0.0` — acceptable since the frontend already knows recording length.
 
 **Next steps**:
 - Move to T17: Audio upload endpoint

@@ -19,6 +19,10 @@ ALLOWED_CONTENT_TYPES: dict[str, str] = {
     "audio/x-wav": ".wav",
     "audio/mpeg": ".mp3",
     "audio/mp3": ".mp3",
+    "audio/ogg": ".ogg",
+    "audio/flac": ".flac",
+    "audio/x-m4a": ".m4a",
+    "audio/m4a": ".m4a",
 }
 
 
@@ -47,7 +51,7 @@ async def transcribe_audio(file_bytes: bytes, content_type: str) -> dict:
     if extension is None:
         raise ValueError(
             f"Formato não suportado: {content_type}. "
-            f"Formatos aceitos: webm, mp4, wav, mpeg."
+            f"Formatos aceitos: webm, mp4, wav, mpeg, ogg, flac, m4a."
         )
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
