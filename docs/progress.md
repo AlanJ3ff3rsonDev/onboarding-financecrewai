@@ -64,6 +64,37 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T18: AgentConfig Pydantic schema
+
+**Status**: completed
+
+**What was done**:
+- Added 8 nested Pydantic models to `app/models/schemas.py`:
+  - `CompanyContext` (name, segment, products, target_audience)
+  - `ContactHours` (weekday, saturday, sunday nullable)
+  - `ToneConfig` (style literal, use_first_name, prohibited/preferred words, opening_message_template)
+  - `NegotiationPolicies` (discount caps with ge/le validators, installments, strategy literal, payment methods, link generation)
+  - `Guardrails` (never_do/say lists, escalation_triggers, contact_hours nested, follow_up_interval, max_attempts, must_identify_as_ai)
+  - `ScenarioResponses` (already_paid, dont_recognize_debt, cant_pay_now, aggressive_debtor)
+  - `AgentMetadata` (version, generated_at, onboarding_session_id, generation_model)
+  - `AgentConfig` (root — agent_type, company_context, system_prompt min_length=200, tone, negotiation_policies, guardrails, scenario_responses, tools, metadata)
+- Validation rules: discount full_payment le=100, installment le=50, max_installments le=48, system_prompt min_length=200, follow_up_interval ge=1, max_attempts ge=1
+- Created `tests/test_agent_config.py` with 3 tests
+
+**Tests**:
+- [x] Automated: `test_agent_config_valid` — full valid instance created without errors (PASSED)
+- [x] Automated: `test_agent_config_invalid_discount` — discount >100% and >50% both raise ValidationError (PASSED)
+- [x] Automated: `test_agent_config_json_schema` — model_json_schema() returns valid dict with all 9 top-level properties and 7 $defs (PASSED)
+- [x] Full suite: 85/85 tests passing (no regressions)
+
+**Issues found**:
+- Minor: T17 was marked `done` in progress.md but still `pending` in tasks.md summary table. Fixed.
+
+**Next steps**:
+- Move to T19: Agent generation prompt
+
+---
+
 ### 2026-02-20 — T17: Audio upload endpoint
 
 **Status**: completed

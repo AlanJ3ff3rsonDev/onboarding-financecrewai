@@ -537,7 +537,7 @@
 
 **Manual tests**: None (data structure only)
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -793,8 +793,8 @@
 | T14 | Interview progress endpoint + completion | M2 | T13 | `done` |
 | T15 | Smart defaults confirmation endpoint | M2 | T14 | `done` |
 | T16 | Audio transcription service | M2 | T01 | `done` |
-| T17 | Audio upload endpoint | M2 | T04, T16 | `pending` |
-| T18 | AgentConfig Pydantic schema | M3 | — | `pending` |
+| T17 | Audio upload endpoint | M2 | T04, T16 | `done` |
+| T18 | AgentConfig Pydantic schema | M3 | — | `done` |
 | T19 | Agent generation prompt | M3 | T18 | `pending` |
 | T20 | Agent generation service + sanity checks | M3 | T19 | `pending` |
 | T21 | Agent generation endpoint | M3 | T04, T20 | `pending` |

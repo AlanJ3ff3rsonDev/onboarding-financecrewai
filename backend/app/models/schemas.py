@@ -103,3 +103,73 @@ class SessionResponse(BaseModel):
 class CreateSessionResponse(BaseModel):
     session_id: str
     status: str
+
+
+# --- AgentConfig schemas (T18) ---
+
+
+class CompanyContext(BaseModel):
+    name: str
+    segment: str
+    products: str
+    target_audience: str
+
+
+class ContactHours(BaseModel):
+    weekday: str = Field(..., description="HH:MM-HH:MM format, e.g. '08:00-20:00'")
+    saturday: str = Field(..., description="HH:MM-HH:MM format, e.g. '08:00-14:00'")
+    sunday: str | None = Field(default=None, description="null if no Sunday contact")
+
+
+class ToneConfig(BaseModel):
+    style: Literal["formal", "friendly", "empathetic", "assertive"]
+    use_first_name: bool
+    prohibited_words: list[str] = Field(default_factory=list)
+    preferred_words: list[str] = Field(default_factory=list)
+    opening_message_template: str
+
+
+class NegotiationPolicies(BaseModel):
+    max_discount_full_payment_pct: float = Field(..., ge=0, le=100)
+    max_discount_installment_pct: float = Field(..., ge=0, le=50)
+    max_installments: int = Field(..., ge=0, le=48)
+    min_installment_value_brl: float = Field(..., ge=0)
+    discount_strategy: Literal["only_when_resisted", "proactive", "escalating"]
+    payment_methods: list[str]
+    can_generate_payment_link: bool
+
+
+class Guardrails(BaseModel):
+    never_do: list[str]
+    never_say: list[str]
+    escalation_triggers: list[str]
+    contact_hours: ContactHours
+    follow_up_interval_days: int = Field(..., ge=1)
+    max_attempts_before_stop: int = Field(..., ge=1)
+    must_identify_as_ai: bool
+
+
+class ScenarioResponses(BaseModel):
+    already_paid: str
+    dont_recognize_debt: str
+    cant_pay_now: str
+    aggressive_debtor: str
+
+
+class AgentMetadata(BaseModel):
+    version: int = Field(default=1, ge=1)
+    generated_at: str
+    onboarding_session_id: str
+    generation_model: str = "gpt-4.1-mini"
+
+
+class AgentConfig(BaseModel):
+    agent_type: Literal["compliant", "non_compliant"]
+    company_context: CompanyContext
+    system_prompt: str = Field(..., min_length=200)
+    tone: ToneConfig
+    negotiation_policies: NegotiationPolicies
+    guardrails: Guardrails
+    scenario_responses: ScenarioResponses
+    tools: list[str]
+    metadata: AgentMetadata
