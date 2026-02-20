@@ -347,9 +347,15 @@ async def submit_answer(
         follow_up_count=state.get("follow_up_count", 0),
     )
 
-    # Follow-up evaluation for text-type answers only
+    # Follow-up evaluation for text answers, or select/multiselect with "outro"/"depende"
     question_type = current.get("question_type", "text")
-    if question_type == "text":
+    answer_lower = answer.lower()
+    needs_evaluation = (
+        question_type == "text"
+        or "outro" in answer_lower
+        or "depende" in answer_lower
+    )
+    if needs_evaluation:
         needs_fu, fu_question = await evaluate_and_maybe_follow_up(
             updated_state, question_id, answer,
         )

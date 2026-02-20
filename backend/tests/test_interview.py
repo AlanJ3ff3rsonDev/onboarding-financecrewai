@@ -687,3 +687,72 @@ def test_follow_up_endpoint_response(client: TestClient) -> None:
     # follow_up field present for follow-up responses
     assert "follow_up" in data
     assert data["follow_up"]["question_id"] == "followup_core_1_1"
+
+
+@pytest.mark.asyncio
+async def test_select_outro_triggers_follow_up():
+    """Select question answered with 'outro' triggers follow-up evaluation."""
+    from unittest.mock import patch, AsyncMock
+
+    state = await create_interview()
+
+    # Answer core_1 (text) without follow-up to advance
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        _, state2 = await submit_answer(state, "core_1", "Software de gestão", "text")
+
+    # Answer core_2 (multiselect) without follow-up to advance
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        _, state3 = await submit_answer(state2, "core_2", "pix,boleto", "text")
+
+    # core_3 is select — answer with "outro" → should trigger evaluation
+    fu_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode explicar quando exatamente você considera a conta vencida?",
+        "reason": "Selecionou 'outro' sem especificar",
+    })
+    mock_client = _mock_openai_response(fu_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, state4 = await submit_answer(state3, "core_3", "outro", "text")
+
+    assert next_q is not None
+    assert next_q.question_id == "followup_core_3_1"
+    assert next_q.phase == "follow_up"
+    assert state4["needs_follow_up"] is True
+    assert state4["follow_up_count"] == 1
+    # LLM WAS called because answer contained "outro"
+    mock_client.chat.completions.create.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_multiselect_with_outro_triggers_follow_up():
+    """Multiselect answer containing 'outro' triggers follow-up evaluation."""
+    from unittest.mock import patch, AsyncMock
+
+    state = await create_interview()
+
+    # Answer core_1 (text) without follow-up to advance
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        _, state2 = await submit_answer(state, "core_1", "Software de gestão", "text")
+
+    # core_2 is multiselect — answer with "pix,outro" → should trigger evaluation
+    fu_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Você mencionou 'outro' método de pagamento. Quais outros métodos seus clientes usam?",
+        "reason": "Precisa especificar o método 'outro'",
+    })
+    mock_client = _mock_openai_response(fu_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, state3 = await submit_answer(state2, "core_2", "pix,outro", "text")
+
+    assert next_q is not None
+    assert next_q.question_id == "followup_core_2_1"
+    assert next_q.phase == "follow_up"
+    assert state3["needs_follow_up"] is True
+    # LLM WAS called because answer contained "outro"
+    mock_client.chat.completions.create.assert_called_once()

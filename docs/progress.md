@@ -102,6 +102,8 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 **Issues found**:
 - **Old T11 tests broke**: Because `OPENAI_API_KEY` is in the env, `submit_answer` now triggers real follow-up evaluation. Fixed by patching `evaluate_and_maybe_follow_up` to return `(False, None)` in old tests that test answer advancement (not follow-up behavior).
+- **User feedback**: Select/multiselect questions with "Outro" or "Depende" option also need follow-up evaluation, since the user is writing free text that could be vague. Added `"outro" in answer` / `"depende" in answer` check to the evaluation condition. Added 2 new tests (`test_select_outro_triggers_follow_up`, `test_multiselect_with_outro_triggers_follow_up`).
+- **Full manual test (all 12 questions)**: Verified end-to-end with real LLM. 24 total answers (12 core + 12 follow-ups). "outro"/"depende" correctly triggered evaluation. Standard select options correctly skipped. Max 2 follow-ups respected. Phase transitioned to "dynamic" after core_12. 51/51 automated tests passing.
 
 **Next steps**:
 - Move to T13: Dynamic question generation
