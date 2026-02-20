@@ -90,6 +90,16 @@ Track bugs or problems that need attention but aren't blocking current work.
 - [x] Automated: `test_submit_answer_session_not_found` — 404 (PASSED)
 - [x] Automated: `test_submit_answer_interview_not_started` — 400 (PASSED)
 - [x] Full suite: 43/43 tests passing (no regressions)
+- [x] Manual: Started server → full flow via curl:
+  - POST /sessions → created session for "CollectAI"
+  - GET /interview/next → core_1 returned, status → "interviewing"
+  - POST /interview/answer core_1 → received=true, next=core_2 (multiselect with payment options)
+  - POST /interview/answer core_2 → next=core_3
+  - POST /interview/answer core_3 → next=core_4
+  - GET /sessions/{id} → 3 answers in interview_responses AND interview_state.answers, current=core_4, remaining=8
+  - POST answer with wrong question_id → 400 "expected 'core_4', got 'core_10'"
+  - POST answer for nonexistent session → 404
+  - GET /interview/next (idempotent) → still returns core_4 without advancing
 
 **Issues found**:
 - None
