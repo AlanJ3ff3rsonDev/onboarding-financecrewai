@@ -1024,3 +1024,121 @@ async def test_dynamic_answer_triggers_completeness_eval():
     assert next_q is not None
     assert next_q.question_id == "dynamic_3"
     assert next_q.phase == "dynamic"
+
+
+# ---------- T14: Interview progress endpoint + completion ----------
+
+
+def test_progress_not_started(client: TestClient) -> None:
+    """No interview started → phase='not_started', all zeros."""
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["phase"] == "not_started"
+    assert data["total_answered"] == 0
+    assert data["core_answered"] == 0
+    assert data["core_total"] == 12
+    assert data["dynamic_answered"] == 0
+    assert data["estimated_remaining"] == 12
+    assert data["is_complete"] is False
+
+
+def test_progress_midway(client: TestClient) -> None:
+    """After answering a few core questions, progress reflects correctly."""
+    from unittest.mock import AsyncMock, patch
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Initialize interview
+    client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Answer core_1 and core_2
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up",
+               new_callable=AsyncMock, return_value=(False, None)):
+        client.post(
+            f"/api/v1/sessions/{session_id}/interview/answer",
+            json={"question_id": "core_1", "answer": "Software de gestão", "source": "text"},
+        )
+        client.post(
+            f"/api/v1/sessions/{session_id}/interview/answer",
+            json={"question_id": "core_2", "answer": "PIX e boleto", "source": "text"},
+        )
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["phase"] == "core"
+    assert data["core_answered"] == 2
+    assert data["core_total"] == 12
+    assert data["total_answered"] == 2
+    assert data["dynamic_answered"] == 0
+    assert data["estimated_remaining"] > 0
+    assert data["is_complete"] is False
+
+
+def test_progress_defaults_phase(client: TestClient) -> None:
+    """When phase='defaults', is_complete=True and session status → 'interviewed'."""
+    from app.database import get_db
+    from app.main import app
+    from app.models.orm import OnboardingSession
+    from app.services.interview_agent import serialize_state
+
+    resp = client.post(
+        "/api/v1/sessions",
+        json={"company_name": "TestCorp", "website": "https://test.com"},
+    )
+    session_id = resp.json()["session_id"]
+
+    # Manually set interview_state to defaults phase
+    db = next(app.dependency_overrides[get_db]())
+    session = db.get(OnboardingSession, session_id)
+    state = {
+        "enrichment_data": {},
+        "core_questions_remaining": [],
+        "current_question": None,
+        "answers": [
+            {"question_id": f"core_{i}", "answer": f"Resp {i}",
+             "source": "text", "question_text": f"Q{i}"}
+            for i in range(1, 13)
+        ],
+        "dynamic_questions_asked": 5,
+        "max_dynamic_questions": 8,
+        "phase": "defaults",
+        "needs_follow_up": False,
+        "follow_up_question": None,
+        "follow_up_count": 0,
+    }
+    session.interview_state = serialize_state(state)
+    session.status = "interviewing"
+    db.commit()
+    db.close()
+
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["phase"] == "defaults"
+    assert data["core_answered"] == 12
+    assert data["dynamic_answered"] == 5
+    assert data["total_answered"] == 12
+    assert data["estimated_remaining"] == 0
+    assert data["is_complete"] is True
+
+    # Verify session status transitioned to 'interviewed'
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    assert session_resp.json()["status"] == "interviewed"
+
+
+def test_progress_session_not_found(client: TestClient) -> None:
+    """GET /interview/progress for non-existent session → 404."""
+    resp = client.get("/api/v1/sessions/nonexistent-id/interview/progress")
+    assert resp.status_code == 404

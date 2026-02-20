@@ -64,6 +64,35 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-20 — T14: Interview progress endpoint + completion
+
+**Status**: completed
+
+**What was done**:
+- Added `InterviewProgressResponse` Pydantic schema to `app/models/schemas.py` — 7 fields: phase, total_answered, core_answered, core_total, dynamic_answered, estimated_remaining, is_complete
+- Added `GET /api/v1/sessions/{id}/interview/progress` to `app/routers/interview.py`:
+  - Returns `phase="not_started"` with all zeros if interview not initialized
+  - Computes core_answered = core_total - remaining (adjusting for current unanswered question)
+  - estimated_remaining: core phase = remaining core + max_dynamic; dynamic phase = max_dynamic - asked; defaults/complete = 0
+  - `is_complete=True` when phase is "defaults" or "complete"
+  - Side-effect: transitions session.status to "interviewed" when is_complete is True
+- Added 4 tests
+
+**Tests**:
+- [x] Automated: `test_progress_not_started` — no interview → phase="not_started", all zeros, core_total=12 (PASSED)
+- [x] Automated: `test_progress_midway` — after 2 core answers → core_answered=2, estimated_remaining>0 (PASSED)
+- [x] Automated: `test_progress_defaults_phase` — phase="defaults" → is_complete=True, status="interviewed" (PASSED)
+- [x] Automated: `test_progress_session_not_found` — 404 (PASSED)
+- [x] Full suite: 62/62 tests passing (no regressions)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Move to T15: Smart defaults confirmation endpoint
+
+---
+
 ### 2026-02-20 — T13: Dynamic question generation
 
 **Status**: completed

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.orm import OnboardingSession
-from app.models.schemas import InterviewQuestion, SubmitAnswerRequest
+from app.models.schemas import InterviewProgressResponse, InterviewQuestion, SubmitAnswerRequest
+from app.prompts.interview import CORE_QUESTIONS
 from app.services.interview_agent import (
     create_interview,
     deserialize_state,
@@ -116,3 +117,58 @@ async def post_submit_answer(
         "phase": phase,
         "message": message,
     }
+
+
+@router.get("/{session_id}/interview/progress")
+async def get_interview_progress(
+    session_id: str,
+    db: Session = Depends(get_db),
+) -> InterviewProgressResponse:
+    session = db.get(OnboardingSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.interview_state is None:
+        return InterviewProgressResponse(
+            phase="not_started",
+            total_answered=0,
+            core_answered=0,
+            core_total=len(CORE_QUESTIONS),
+            dynamic_answered=0,
+            estimated_remaining=len(CORE_QUESTIONS),
+            is_complete=False,
+        )
+
+    state = deserialize_state(session.interview_state)
+    phase = state["phase"]
+    core_total = len(CORE_QUESTIONS)
+    core_answered = core_total - len(state["core_questions_remaining"])
+    # current_question is already popped from remaining, so subtract 1 if still in core phase
+    # and there's a current core question being displayed (not yet answered)
+    if phase == "core" and state.get("current_question"):
+        core_answered -= 1
+    dynamic_answered = state["dynamic_questions_asked"]
+    total_answered = len(state["answers"])
+
+    if phase == "core":
+        estimated_remaining = (core_total - core_answered) + state["max_dynamic_questions"]
+    elif phase == "dynamic":
+        estimated_remaining = state["max_dynamic_questions"] - dynamic_answered
+    else:
+        estimated_remaining = 0
+
+    is_complete = phase in ("defaults", "complete")
+
+    if is_complete and session.status != "interviewed":
+        session.status = "interviewed"
+        db.commit()
+
+    return InterviewProgressResponse(
+        phase=phase,
+        total_answered=total_answered,
+        core_answered=core_answered,
+        core_total=core_total,
+        dynamic_answered=dynamic_answered,
+        estimated_remaining=estimated_remaining,
+        is_complete=is_complete,
+    )

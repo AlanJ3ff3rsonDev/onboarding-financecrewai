@@ -61,6 +61,16 @@ class SubmitAnswerRequest(BaseModel):
     source: Literal["text", "audio"] = "text"
 
 
+class InterviewProgressResponse(BaseModel):
+    phase: str
+    total_answered: int
+    core_answered: int
+    core_total: int
+    dynamic_answered: int
+    estimated_remaining: int
+    is_complete: bool
+
+
 class CreateSessionRequest(BaseModel):
     company_name: str = Field(..., min_length=1)
     website: str = Field(..., min_length=1)

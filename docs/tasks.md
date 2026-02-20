@@ -421,7 +421,7 @@
 **Manual tests**:
 - Check progress at various points during an interview flow
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -790,7 +790,7 @@
 | T11 | Interview "submit answer" endpoint | M2 | T10 | `done` |
 | T12 | AI follow-up evaluation + generation | M2 | T11 | `done` |
 | T13 | Dynamic question generation | M2 | T12 | `done` |
-| T14 | Interview progress endpoint + completion | M2 | T13 | `pending` |
+| T14 | Interview progress endpoint + completion | M2 | T13 | `done` |
 | T15 | Smart defaults confirmation endpoint | M2 | T14 | `pending` |
 | T16 | Audio transcription service | M2 | T01 | `pending` |
 | T17 | Audio upload endpoint | M2 | T04, T16 | `pending` |
