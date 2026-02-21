@@ -118,6 +118,38 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ---
 
+### 2026-02-20 — Documentation Quality Review + Schema Improvements
+
+**Status**: completed
+
+**What was done**:
+- Critical review of all docs for Lovable-readiness. Found 5 gaps.
+- **tech_design.md — new Section 5 "API Response Schemas"**: Added complete JSON examples for every response type the frontend needs (InterviewQuestion, CompanyProfile, SmartDefaults, AgentConfig with all nested objects, SimulationResult with nested messages/metrics, AgentAdjustRequest). Each with exact field names, types, and allowed values.
+- **tech_design.md — Section 8 "Frontend Architecture"**: Added audio flow documentation (MediaRecorder → POST /audio/transcribe → text → answer with source:"audio"). Added Swagger reference.
+- **tech_design.md — section renumbering**: Fixed 5→6→7→8→9→10→11 after inserting new section.
+- **tasks.md — T29 (Boas-vindas)**: Added CNPJ mask format, URL validation hint, error 422 response, complete request/response example.
+- **tasks.md — T30 (Enriquecimento)**: Added complete CompanyProfile JSON example, field label translations PT, handling of 409 (already enriched).
+- **tasks.md — T31 (Entrevista)**: Major rewrite. Added complete InterviewQuestion schema with all fields. Added QuestionOption format (value+label). Added explicit rules for select/multiselect answer format. Added complete audio recording flow (MediaRecorder API → transcribe endpoint → fill textarea). Added phase transition logic diagram. Added InterviewProgressResponse schema.
+- **tasks.md — T32 (Smart Defaults)**: Added complete SmartDefaults JSON example. Added table with all 8 fields, their labels PT, input types, and validation rules. Added discount_strategy select options with values ("only_when_resisted"/"proactive"/"escalating") and labels PT.
+- **tasks.md — T33 (Agente)**: Added complete AgentConfig JSON example with all nested objects. Added tone.style translation table. Added adjustment flow with PUT /adjust endpoint, dotted-path syntax example, and response schema.
+- **tasks.md — T34 (Simulação)**: Added complete SimulationResult JSON example with 2 scenarios, conversation messages, metrics. Added resolution translation table. Added null handling for optional metrics.
+- **tasks.md — T35 (Integração)**: Added session restoration on refresh, Swagger reference, explicit error handling guidance.
+
+**Gaps addressed**:
+1. Missing response schemas → complete JSON examples inline in every Lovable prompt
+2. Missing audio flow → full MediaRecorder + transcribe flow added to T31 + tech_design
+3. Missing select values → exact values + labels for all selects (discount_strategy, etc.)
+4. Vague adjust flow → complete PUT /adjust example with dotted-path syntax
+5. Missing Swagger reference → added to tech_design + T35
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Next task: T26 (CORS configuration) — first task of M6 (Deploy)
+
+---
+
 ### 2026-02-20 — T24: Simulation endpoint
 
 **Status**: completed

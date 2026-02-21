@@ -847,19 +847,26 @@ de cobrança.
 Layout:
 - Título: "Vamos configurar seu agente de cobrança"
 - Subtítulo: "Em poucos minutos, vamos criar um agente personalizado para sua empresa"
-- Campo: "Nome da empresa" (obrigatório)
-- Campo: "Site da empresa" (obrigatório, placeholder: "exemplo.com.br")
-- Campo: "CNPJ" (opcional, placeholder: "XX.XXX.XXX/XXXX-XX")
+- Campo: "Nome da empresa" (obrigatório, min 1 char)
+- Campo: "Site da empresa" (obrigatório, min 1 char, placeholder: "exemplo.com.br")
+- Campo: "CNPJ" (opcional, placeholder: "XX.XXX.XXX/XXXX-XX", máscara de formatação)
 - Botão: "Começar" (desabilitado até nome e site preenchidos)
+
+Validação no frontend:
+- Nome: obrigatório, não pode ser vazio
+- Site: obrigatório, deve parecer uma URL (com ou sem https://)
+- CNPJ: opcional, se preenchido formatar com máscara XX.XXX.XXX/XXXX-XX
 
 Ao clicar "Começar":
 1. POST para {BACKEND_URL}/api/v1/sessions
-   Body: { "company_name": "...", "website": "...", "cnpj": "..." }
-   Resposta: { "session_id": "uuid", "status": "created" }
-2. Salvar session_id no estado da aplicação
+   Content-Type: application/json
+   Body: { "company_name": "Padaria do João", "website": "padariasjoao.com.br", "cnpj": "12.345.678/0001-99" }
+   Resposta 201: { "session_id": "550e8400-e29b-41d4-a716-446655440000", "status": "created" }
+   Erro 422: { "detail": [ { "msg": "...", "type": "..." } ] } — campo inválido
+2. Salvar session_id no estado da aplicação (Context, Zustand, ou localStorage)
 3. Navegar para a próxima tela (enriquecimento)
 
-BACKEND_URL: [URL do Railway quando deployar]
+BACKEND_URL: configurar como variável de ambiente no Lovable.
 
 Estilo: limpo, moderno, cards com sombra suave. Cores da marca CollectAI.
 ```
@@ -889,24 +896,46 @@ backend está analisando o site com IA para extrair informações.
 
 Fluxo:
 1. Ao montar a tela, fazer POST para {BACKEND_URL}/api/v1/sessions/{session_id}/enrich
-   (sem body — o backend já tem o site da sessão)
-   Resposta: { "status": "enriched", "enrichment_data": { company_name, segment,
-   products_description, target_audience, communication_tone, payment_methods_mentioned,
-   collection_relevant_context } }
+   Content-Type: application/json (sem body — o backend já tem o site da sessão)
+
+   Resposta 200:
+   {
+     "status": "enriched",
+     "enrichment_data": {
+       "company_name": "CollectAI",
+       "segment": "Fintech / SaaS de cobrança",
+       "products_description": "Plataforma de cobrança automatizada via WhatsApp",
+       "target_audience": "PMEs brasileiras com problemas de inadimplência",
+       "communication_tone": "Profissional e empático",
+       "payment_methods_mentioned": "PIX, boleto, cartão de crédito",
+       "collection_relevant_context": "Foco em recuperação amigável"
+     }
+   }
+
+   Erro 409: { "detail": "Session already enriched" } — já foi feito, pode seguir
+   Erro 404: { "detail": "Session not found" }
 
 2. Enquanto espera (~15 segundos):
    - Mostrar animação de loading com mensagem: "Analisando o site da sua empresa..."
    - Texto motivacional: "Estamos usando IA para entender melhor seu negócio"
 
 3. Quando retornar:
-   - Mostrar card com dados extraídos (company_name, segment, products_description, etc.)
-   - Cada campo como label + valor em texto
-   - Campos vazios ("") não são mostrados
+   - Mostrar card com dados extraídos
+   - Labels em português para cada campo:
+     - company_name → "Empresa"
+     - segment → "Segmento"
+     - products_description → "Produtos/Serviços"
+     - target_audience → "Público-alvo"
+     - communication_tone → "Tom de comunicação"
+     - payment_methods_mentioned → "Métodos de pagamento"
+     - collection_relevant_context → "Contexto de cobrança"
+   - Campos com valor vazio ("") não são mostrados
    - Botão: "Continuar para a entrevista"
 
-4. Se der erro (status != 200):
+4. Se der erro (status != 200 e != 409):
    - Mostrar mensagem: "Não conseguimos analisar o site, mas você pode continuar normalmente"
    - Botão: "Continuar mesmo assim"
+   - O fluxo continua normalmente sem enriquecimento
 
 Ao clicar "Continuar": navegar para tela de entrevista.
 
@@ -936,51 +965,126 @@ Crie a tela de entrevista (wizard) do onboarding.
 Contexto: O usuário vai responder perguntas sobre seu negócio de cobrança.
 As perguntas vêm do backend uma por uma. Existem 3 tipos: text, select, multiselect.
 Algumas respostas geram follow-ups da IA pedindo mais detalhes.
+O usuário pode responder digitando texto OU gravando áudio (microfone).
 
-Layout:
-- Barra de progresso no topo (core_answered / 12 para fase core)
+## Layout
+
+- Barra de progresso no topo (core_answered / 12 para fase core, dinâmica mostra "Pergunta adicional X")
 - Indicador de fase: "Pergunta X de 12" (core) ou "Pergunta adicional" (dynamic)
 - Card central com a pergunta:
   - Texto da pergunta (grande, negrito)
-  - Dica de contexto (se existir, texto menor abaixo)
-  - Se tem pre_filled_value: mostrar como sugestão com "Confirmamos do seu site: ..."
-  - Input baseado no tipo:
-    - "text": textarea multilinha
-    - "select": lista de radio buttons com as opções
-    - "multiselect": lista de checkboxes com as opções
+  - Dica de contexto (context_hint, se não null — texto menor abaixo da pergunta)
+  - Se tem pre_filled_value (não null): mostrar como sugestão com "Confirmamos do seu site: [valor]"
+    O campo já vem pré-preenchido, usuário pode aceitar ou editar
+  - Input baseado no question_type:
+    - "text": textarea multilinha + botão de microfone para gravar áudio
+    - "select": lista de radio buttons com as opções (label visível, value enviado)
+    - "multiselect": lista de checkboxes com as opções (labels visíveis, values enviados)
+  - Se a pergunta é um follow-up (question_id começa com "followup_"):
+    Destacar visualmente: "A IA quer saber mais:" antes da pergunta
 - Botão "Próxima" (desabilitado até ter resposta)
 
-Fluxo da API:
+## Schema: InterviewQuestion (resposta da API)
+
+{
+  "question_id": "core_1",           // ID único — "core_X", "dynamic_X", ou "followup_X_Y"
+  "question_text": "O que sua empresa vende?",  // Texto da pergunta em português
+  "question_type": "text",           // "text" | "select" | "multiselect"
+  "options": [                       // null para "text", array para select/multiselect
+    { "value": "pix", "label": "PIX" },
+    { "value": "boleto", "label": "Boleto" },
+    { "value": "outro", "label": "Outro" }
+  ],
+  "pre_filled_value": "string ou null",  // Dado extraído do site, pode pré-preencher
+  "is_required": true,
+  "supports_audio": true,            // Se true, mostrar botão de microfone
+  "phase": "core",                   // "core" | "dynamic" | "follow_up"
+  "context_hint": "string ou null"   // Dica de contexto para mostrar abaixo da pergunta
+}
+
+IMPORTANTE sobre options:
+- Cada opção tem "value" (enviado ao backend) e "label" (mostrado ao usuário)
+- Para select: enviar o value da opção selecionada (ex: "d5", NÃO "5 dias após")
+- Para multiselect: enviar values separados por vírgula (ex: "pix,boleto,cartao_credito")
+- Para text: enviar o texto digitado
+
+## Fluxo da API
+
 1. Ao montar: GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/next
-   Resposta: { question_id, question_text, question_type, options, pre_filled_value,
-   phase, context_hint }
+
+   Se é pergunta normal, resposta = InterviewQuestion (schema acima)
+
+   Se a entrevista já acabou:
+   { "phase": "defaults", "message": "Fase de perguntas concluída. Confirme os padrões." }
+   → navegar para tela de smart defaults
+
+   Se phase == "complete":
+   { "phase": "complete", "message": "Entrevista completa" }
 
 2. Ao clicar "Próxima":
    POST {BACKEND_URL}/api/v1/sessions/{session_id}/interview/answer
+   Content-Type: application/json
    Body: { "question_id": "core_1", "answer": "texto da resposta", "source": "text" }
 
-   Para select: answer = o value da opção selecionada (ex: "d5")
-   Para multiselect: answer = values separados por vírgula (ex: "pix,boleto,cartao_credito")
-   Para text: answer = texto digitado (ou pre_filled_value se aceito)
+   O campo "source" deve ser "text" para respostas digitadas ou "audio" se veio de transcrição.
 
-   Resposta: { "received": true, "next_question": {...} ou null, "phase": "..." }
+   Resposta quando tem próxima pergunta:
+   {
+     "received": true,
+     "next_question": { /* InterviewQuestion completo */ }
+   }
 
-3. Se next_question existe:
-   - Se question_id começa com "followup_": é um aprofundamento da IA
-     Mostrar com destaque: "A IA quer saber mais sobre sua resposta:"
-   - Senão: é a próxima pergunta normal
-   - Atualizar a tela com a nova pergunta
+   Resposta quando NÃO tem próxima pergunta:
+   {
+     "received": true,
+     "next_question": null,
+     "phase": "defaults",
+     "message": "Entrevista concluída. Prossiga para confirmação dos padrões."
+   }
 
-4. Se next_question é null:
-   - Se phase == "defaults": navegar para tela de smart defaults
-   - Se phase == "dynamic": fazer GET /interview/next para buscar próxima pergunta dinâmica
+3. Lógica após receber resposta do POST /answer:
 
-5. Para barra de progresso:
+   SE next_question NÃO é null:
+     - Se question_id começa com "followup_": é follow-up da IA
+       Mostrar com destaque visual: "A IA quer saber mais sobre sua resposta:"
+     - Senão: é a próxima pergunta normal
+     - Renderizar a nova pergunta
+
+   SE next_question É null:
+     - Se phase == "defaults": navegar para tela de smart defaults
+     - Se phase == "dynamic": fazer GET /interview/next para buscar próxima dinâmica
+       (perguntas dinâmicas são geradas uma por vez pelo backend)
+
+4. Barra de progresso — chamar após cada resposta:
    GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/progress
-   Resposta: { phase, core_answered, core_total, dynamic_answered, is_complete }
-   Chamar após cada resposta para atualizar a barra.
+   Resposta:
+   {
+     "phase": "core",             // "not_started" | "core" | "dynamic" | "defaults" | "complete"
+     "total_answered": 5,
+     "core_answered": 5,
+     "core_total": 12,
+     "dynamic_answered": 0,
+     "estimated_remaining": 15,
+     "is_complete": false
+   }
+
+## Fluxo de áudio (alternativa ao texto)
+
+Para perguntas do tipo "text" com supports_audio == true:
+1. Mostrar ícone de microfone ao lado do textarea
+2. Ao clicar: iniciar gravação com MediaRecorder API do browser (formato webm)
+3. Mostrar indicador visual de gravação (pulsing red dot, duração)
+4. Ao parar gravação:
+   - Enviar arquivo para: POST {BACKEND_URL}/api/v1/sessions/{session_id}/audio/transcribe
+     Content-Type: multipart/form-data
+     Campo: "file" (o blob de áudio)
+   - Resposta: { "text": "transcrição em português", "duration_seconds": 12.5 }
+   - Preencher o textarea com o texto transcrito
+   - Usuário pode revisar/editar antes de enviar
+5. Ao clicar "Próxima": enviar com source: "audio"
 
 Estilo: wizard limpo, uma pergunta por vez, transições suaves entre perguntas.
+Microfone discreto mas acessível ao lado do campo de texto.
 ```
 
 **Definition of Done**:
@@ -1009,29 +1113,68 @@ usuário pode aceitar ou ajustar antes de gerar o agente.
 
 Fluxo:
 1. Ao montar: GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/defaults
-   Resposta: { "defaults": { follow_up_interval_days, max_contact_attempts,
-   use_first_name, identify_as_ai, min_installment_value, discount_strategy,
-   payment_link_generation, max_discount_installment_pct }, "confirmed": false }
+
+   Resposta:
+   {
+     "defaults": {
+       "follow_up_interval_days": 3,
+       "max_contact_attempts": 10,
+       "use_first_name": true,
+       "identify_as_ai": true,
+       "min_installment_value": 50.0,
+       "discount_strategy": "only_when_resisted",
+       "payment_link_generation": true,
+       "max_discount_installment_pct": 5.0
+     },
+     "confirmed": false
+   }
+
+   Se "confirmed": true → já foi confirmado antes, pode mostrar como read-only ou permitir re-editar.
 
 2. Mostrar cada configuração como um item editável:
-   - "Intervalo entre follow-ups": input numérico (dias)
-   - "Máximo de tentativas": input numérico
-   - "Usar primeiro nome": toggle (sim/não)
-   - "Identificar como IA": toggle (sim/não)
-   - "Valor mínimo da parcela": input monetário (R$)
-   - "Estratégia de desconto": select (Apenas quando resiste / Proativo / Escalonado)
-   - "Gerar link de pagamento": toggle (sim/não)
-   - "Desconto máx. parcelamento": input percentual (%)
+
+   | Campo | Label PT | Tipo de input | Validação |
+   |-------|----------|---------------|-----------|
+   | follow_up_interval_days | "Intervalo entre follow-ups (dias)" | input numérico | mínimo 1 |
+   | max_contact_attempts | "Máximo de tentativas de contato" | input numérico | mínimo 1 |
+   | use_first_name | "Usar primeiro nome do devedor" | toggle on/off | — |
+   | identify_as_ai | "Identificar como IA" | toggle on/off | — |
+   | min_installment_value | "Valor mínimo da parcela (R$)" | input monetário | mínimo 0 |
+   | discount_strategy | "Estratégia de desconto" | select | ver opções abaixo |
+   | payment_link_generation | "Gerar link de pagamento (PIX + Boleto)" | toggle on/off | — |
+   | max_discount_installment_pct | "Desconto máximo para parcelamento (%)" | input percentual | 0 a 50 |
+
+   Opções do select "discount_strategy" (value → label):
+   - "only_when_resisted" → "Apenas quando o devedor resiste"
+   - "proactive" → "Oferecer proativamente"
+   - "escalating" → "Escalonado (aumenta com o tempo)"
+
+   IMPORTANTE: enviar o value ("only_when_resisted"), NÃO o label.
 
 3. Botão: "Confirmar e gerar agente"
    POST {BACKEND_URL}/api/v1/sessions/{session_id}/interview/defaults
-   Body: { todos os 8 campos com valores atuais/editados }
-   Resposta: { "confirmed": true, "phase": "complete" }
+   Content-Type: application/json
+   Body (todos os 8 campos):
+   {
+     "follow_up_interval_days": 3,
+     "max_contact_attempts": 10,
+     "use_first_name": true,
+     "identify_as_ai": true,
+     "min_installment_value": 50.0,
+     "discount_strategy": "only_when_resisted",
+     "payment_link_generation": true,
+     "max_discount_installment_pct": 5.0
+   }
+
+   Resposta 200: { "confirmed": true, "defaults": {...}, "phase": "complete" }
+   Erro 400: { "detail": "Entrevista ainda não concluída..." } — se entrevista não terminou
+   Erro 422: validação falhou (campo fora do range)
 
 4. Navegar para tela de geração do agente.
 
 Estilo: formulário organizado em cards, valores padrão já preenchidos,
-dicas sobre cada configuração.
+dicas contextuais sobre cada configuração (ex: "O agente tentará cobrar
+no máximo X vezes antes de parar").
 ```
 
 **Definition of Done**:
@@ -1059,24 +1202,92 @@ respostas da entrevista. A geração leva ~15 segundos.
 
 Fluxo:
 1. Ao montar: POST {BACKEND_URL}/api/v1/sessions/{session_id}/agent/generate
-   Resposta: { "status": "generated", "agent_config": { agent_type,
-   company_context, system_prompt, tone, negotiation_policies, guardrails,
-   scenario_responses, tools, metadata } }
+   Content-Type: application/json (sem body)
+
+   Resposta 200:
+   {
+     "status": "generated",
+     "agent_config": {
+       "agent_type": "compliant",
+       "company_context": {
+         "name": "Padaria do João",
+         "segment": "Alimentação",
+         "products": "Pães, bolos e confeitaria",
+         "target_audience": "Consumidores locais"
+       },
+       "system_prompt": "Você é um agente de cobrança da Padaria do João... (texto longo, >200 chars)",
+       "tone": {
+         "style": "friendly",         // "formal" | "friendly" | "empathetic" | "assertive"
+         "use_first_name": true,
+         "prohibited_words": ["ameaçar", "processar"],
+         "preferred_words": ["resolver", "parceria"],
+         "opening_message_template": "Olá {nome}! Aqui é a assistente da Padaria do João..."
+       },
+       "negotiation_policies": {
+         "max_discount_full_payment_pct": 10.0,
+         "max_discount_installment_pct": 5.0,
+         "max_installments": 12,
+         "min_installment_value_brl": 50.0,
+         "discount_strategy": "only_when_resisted",
+         "payment_methods": ["pix", "boleto"],
+         "can_generate_payment_link": true
+       },
+       "guardrails": {
+         "never_do": ["Ameaçar o devedor", "Revelar dados de terceiros"],
+         "never_say": ["processo", "cadeia", "Serasa"],
+         "escalation_triggers": ["Devedor solicita humano", "Dívida acima de R$5.000"],
+         "follow_up_interval_days": 3,
+         "max_attempts_before_stop": 10,
+         "must_identify_as_ai": true
+       },
+       "scenario_responses": {
+         "already_paid": "Texto descrevendo como responder quando devedor diz que já pagou",
+         "dont_recognize_debt": "Texto para quando não reconhece a dívida",
+         "cant_pay_now": "Texto para quando não pode pagar agora",
+         "aggressive_debtor": "Texto para quando devedor é agressivo"
+       },
+       "tools": ["generate_payment_link", "check_payment_status"],
+       "metadata": {
+         "version": 1,
+         "generated_at": "2026-02-20T10:30:00",
+         "onboarding_session_id": "uuid",
+         "generation_model": "gpt-4.1-mini"
+       }
+     }
+   }
+
+   Erro 400: { "detail": "Interview must be completed before generating agent config" }
+   Erro 500: { "detail": "Failed to generate agent config" } — erro na LLM
 
 2. Enquanto espera (~15s):
    - Loading: "Gerando seu agente de cobrança personalizado..."
    - Texto: "Estamos configurando tom, regras de negociação, e cenários"
 
-3. Quando retornar, mostrar em seções colapsáveis/tabs:
-   - "System Prompt" — texto completo do prompt (área de texto expandível)
-   - "Tom" — style, uso de primeiro nome, palavras proibidas
-   - "Negociação" — desconto max, parcelas max, métodos de pagamento
-   - "Guardrails" — lista de "nunca fazer", "nunca dizer", triggers de escalação
-   - "Cenários" — respostas para: já pagou, não reconhece, não pode pagar, agressivo
-   - "Ferramentas" — lista de tools disponíveis
+3. Quando retornar, mostrar em seções colapsáveis (accordion/tabs):
+
+   a) "Prompt do Agente" — system_prompt completo (área de texto expandível, read-only)
+   b) "Tom e Comunicação" — tone.style (traduzir: friendly→"Amigável", formal→"Formal",
+      empathetic→"Empático", assertive→"Assertivo"), use_first_name, prohibited_words
+      como tags, preferred_words como tags, opening_message_template
+   c) "Políticas de Negociação" — max_discount_full_payment_pct (%), max_installments,
+      min_installment_value_brl (R$), discount_strategy (traduzir), payment_methods como tags
+   d) "Guardrails" — never_do como lista, never_say como lista/tags,
+      escalation_triggers como lista, follow_up_interval_days, max_attempts_before_stop
+   e) "Cenários" — 4 cards: "Já pagou", "Não reconhece", "Não pode pagar", "Agressivo"
+      cada um com o texto da resposta
+   f) "Ferramentas" — tools como lista
 
 4. Botão principal: "Gerar simulação" → navegar para tela de simulação
-5. Botão secundário: "Ajustar agente" (modal ou inline editing, opcional para V1)
+5. Botão secundário: "Ajustar agente" — abre modal com campos editáveis:
+   - Tom (select: formal/friendly/empathetic/assertive)
+   - Desconto máximo (input numérico)
+   - Parcelas máximas (input numérico)
+   Ao salvar:
+   PUT {BACKEND_URL}/api/v1/sessions/{session_id}/agent/adjust
+   Content-Type: application/json
+   Body: { "adjustments": { "tone.style": "empathetic", "negotiation_policies.max_discount_full_payment_pct": 20 } }
+   Resposta 200: { "status": "adjusted", "agent_config": { /* AgentConfig atualizado */ } }
+   Atualizar a tela com o novo config.
 
 Estilo: dashboard informativo, seções com ícones, collapsible cards.
 ```
@@ -1107,38 +1318,83 @@ A geração leva ~20 segundos.
 
 Fluxo:
 1. Ao montar: POST {BACKEND_URL}/api/v1/sessions/{session_id}/simulation/generate
-   Resposta: { "status": "completed", "simulation_result": { "scenarios": [
-     { scenario_type: "cooperative"|"resistant", debtor_profile, conversation: [
-       { role: "agent"|"debtor", content }
-     ], outcome, metrics: { negotiated_discount_pct, final_installments,
-     payment_method, resolution } }
-   ] } }
+   Content-Type: application/json (sem body)
+
+   Resposta 200:
+   {
+     "status": "completed",
+     "simulation_result": {
+       "scenarios": [
+         {
+           "scenario_type": "cooperative",
+           "debtor_profile": "Maria, 45 anos, dona de padaria, dívida de R$1.200, 15 dias de atraso",
+           "conversation": [
+             { "role": "agent", "content": "Olá Maria! Aqui é a assistente da Padaria do João..." },
+             { "role": "debtor", "content": "Oi, tudo bem? Eu sei que estou devendo..." },
+             { "role": "agent", "content": "Entendo, Maria. Que bom que podemos resolver..." }
+           ],
+           "outcome": "Devedor aceitou parcelamento em 3x de R$400 via PIX",
+           "metrics": {
+             "negotiated_discount_pct": 0,
+             "final_installments": 3,
+             "payment_method": "pix",
+             "resolution": "installment_plan"
+           }
+         },
+         {
+           "scenario_type": "resistant",
+           "debtor_profile": "Carlos, 38 anos, empresário, dívida de R$3.500, 45 dias de atraso",
+           "conversation": [
+             { "role": "agent", "content": "Olá Carlos! Aqui é a assistente..." },
+             { "role": "debtor", "content": "Não reconheço essa dívida!" },
+             { "role": "agent", "content": "Entendo sua preocupação, Carlos..." }
+           ],
+           "outcome": "Devedor escalado para atendimento humano após insistir",
+           "metrics": {
+             "negotiated_discount_pct": null,
+             "final_installments": null,
+             "payment_method": null,
+             "resolution": "escalated"
+           }
+         }
+       ],
+       "metadata": {}
+     }
+   }
+
+   Erro 400: { "detail": "Agent config not generated yet..." }
+   Erro 500: { "detail": "Failed to generate simulation" }
+
+   Nota: cada conversa tem 8-15 mensagens. O array acima está resumido.
 
 2. Enquanto espera (~20s):
    - Loading: "Simulando conversas do seu agente..."
    - Texto: "Gerando cenários realistas com devedor cooperativo e resistente"
 
 3. Quando retornar, mostrar 2 tabs ou cards lado a lado:
-   - Tab 1: "Devedor Cooperativo" (ícone verde)
-   - Tab 2: "Devedor Resistente" (ícone vermelho/laranja)
+   - Tab 1: "Devedor Cooperativo" (ícone verde, badge "cooperative")
+   - Tab 2: "Devedor Resistente" (ícone vermelho/laranja, badge "resistant")
 
    Cada tab mostra:
-   - Perfil do devedor (debtor_profile, se existir)
+   - Perfil do devedor: debtor_profile como texto descritivo no topo
    - Conversa como chat bubbles:
-     - Mensagens do agente: alinhadas à direita, cor da marca
-     - Mensagens do devedor: alinhadas à esquerda, cor cinza
+     - Mensagens com role "agent": alinhadas à direita, cor da marca, avatar de robô
+     - Mensagens com role "debtor": alinhadas à esquerda, cor cinza, avatar de pessoa
    - Card de resultado no final:
-     - Resolução (pagamento, parcelamento, escalado)
-     - Desconto negociado (se aplicável)
-     - Parcelas (se aplicável)
+     - resolution traduzido: "full_payment" → "Pagamento integral",
+       "installment_plan" → "Parcelamento", "escalated" → "Escalado para humano",
+       "no_resolution" → "Sem resolução"
+     - negotiated_discount_pct: "Desconto negociado: X%" (omitir se null)
+     - final_installments: "Parcelas: Nx" (omitir se null)
+     - payment_method: método de pagamento (omitir se null)
 
 4. Botões:
-   - "Aprovar agente" → mostra mensagem de sucesso, onboarding completo
-   - "Regenerar simulação" → chama POST /simulation/generate novamente
+   - "Aprovar agente" (principal) → mostra mensagem de sucesso, onboarding completo
+   - "Regenerar simulação" → chama POST /simulation/generate novamente, mostra loading
    - "Voltar e ajustar" → volta para tela do agente
 
 Estilo: interface de chat moderna (como WhatsApp), bolhas de mensagem,
-avatar para agente e devedor, cores distintas por role.
+avatar para agente e devedor, cores distintas por role, scroll suave.
 ```
 
 **Definition of Done**:
@@ -1165,23 +1421,32 @@ Integre as 6 telas de onboarding num fluxo único com navegação e estado globa
 Contexto: As telas já existem individualmente. Agora precisamos:
 
 1. Estado global: session_id deve ser acessível em todas as telas.
-   Pode usar Context, Zustand, ou URL params.
+   Pode usar Context, Zustand, ou URL params (recomendado: Context + localStorage
+   para sobreviver refresh).
 
 2. Navegação sequencial:
    Boas-vindas → Enriquecimento → Entrevista → Defaults → Agente → Simulação
    - Navegação só para frente (sem botão "voltar" nas telas de entrevista)
-   - Se refresh, pode recomeçar ou restaurar do session_id
+   - Se refresh com session_id salvo: pode restaurar continuando do ponto atual
+     (o backend mantém o estado da entrevista, então GET /interview/next retorna
+     a pergunta atual)
+   - Se refresh sem session_id: recomeçar do início
 
 3. Trigger de onboarding: quando o usuário logado não tem nenhum agente criado,
    redirecionar para o onboarding ao invés do dashboard.
 
-4. Conclusão: quando o usuário aprova a simulação, marcar onboarding como completo
-   e redirecionar para o dashboard normal da plataforma.
+4. Conclusão: quando o usuário aprova a simulação na última tela, marcar onboarding
+   como completo e redirecionar para o dashboard normal da plataforma.
 
 5. Error handling global: se qualquer chamada de API falhar, mostrar toast/banner
-   com mensagem amigável e opção de tentar novamente.
+   com mensagem amigável em português e opção de tentar novamente.
+   Nunca travar o app — sempre dar saída ao usuário.
 
 6. BACKEND_URL como variável de ambiente no Lovable.
+   Todos os endpoints usam o padrão: {BACKEND_URL}/api/v1/sessions/{session_id}/...
+
+7. Documentação interativa da API disponível em {BACKEND_URL}/docs (Swagger UI).
+   Pode ser usada para testar endpoints manualmente durante o desenvolvimento.
 ```
 
 **Definition of Done**:

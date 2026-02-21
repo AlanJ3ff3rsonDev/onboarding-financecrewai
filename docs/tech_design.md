@@ -162,9 +162,202 @@ Base path: `/api/v1`
 
 ---
 
-## 5. Service Architecture
+## 5. API Response Schemas (complete reference)
 
-### 5.1 Enrichment Service
+These are the exact JSON shapes returned by the API. The frontend must use these field names and types.
+
+### InterviewQuestion
+
+```json
+{
+  "question_id": "core_1",
+  "question_text": "O que sua empresa vende ou oferece?",
+  "question_type": "text | select | multiselect",
+  "options": [
+    { "value": "pix", "label": "PIX" },
+    { "value": "boleto", "label": "Boleto" }
+  ],
+  "pre_filled_value": "string ou null",
+  "is_required": true,
+  "supports_audio": true,
+  "phase": "core | dynamic | follow_up | defaults",
+  "context_hint": "string ou null"
+}
+```
+
+Notes:
+- `options` is `null` for `text` type, array of `{value, label}` for `select`/`multiselect`
+- `pre_filled_value` is only set when enrichment data matches the question
+- For `select`: answer = single `value` (e.g. `"d5"`)
+- For `multiselect`: answer = comma-separated `value`s (e.g. `"pix,boleto,cartao_credito"`)
+- For `text`: answer = free text string
+
+### POST /interview/answer response
+
+When `next_question` exists:
+```json
+{
+  "received": true,
+  "next_question": { /* InterviewQuestion */ },
+  "follow_up": { /* InterviewQuestion, only if next is a follow-up */ }
+}
+```
+
+When no next question:
+```json
+{
+  "received": true,
+  "next_question": null,
+  "phase": "defaults | dynamic",
+  "message": "Entrevista concluída. Prossiga para confirmação dos padrões."
+}
+```
+
+### InterviewProgressResponse
+
+```json
+{
+  "phase": "not_started | core | dynamic | defaults | complete",
+  "total_answered": 14,
+  "core_answered": 12,
+  "core_total": 12,
+  "dynamic_answered": 2,
+  "estimated_remaining": 6,
+  "is_complete": false
+}
+```
+
+### CompanyProfile
+
+```json
+{
+  "company_name": "CollectAI",
+  "segment": "Fintech / SaaS de cobrança",
+  "products_description": "Plataforma de cobrança automatizada via WhatsApp",
+  "target_audience": "PMEs brasileiras com problemas de inadimplência",
+  "communication_tone": "Profissional e empático",
+  "payment_methods_mentioned": "PIX, boleto, cartão de crédito",
+  "collection_relevant_context": "Foco em recuperação amigável antes de judicial"
+}
+```
+
+### SmartDefaults
+
+```json
+{
+  "follow_up_interval_days": 3,
+  "max_contact_attempts": 10,
+  "use_first_name": true,
+  "identify_as_ai": true,
+  "min_installment_value": 50.0,
+  "discount_strategy": "only_when_resisted | proactive | escalating",
+  "payment_link_generation": true,
+  "max_discount_installment_pct": 5.0
+}
+```
+
+Validation: `follow_up_interval_days >= 1`, `max_contact_attempts >= 1`, `min_installment_value >= 0`, `max_discount_installment_pct` 0-50.
+
+### AgentConfig
+
+```json
+{
+  "agent_type": "compliant | non_compliant",
+  "company_context": {
+    "name": "string",
+    "segment": "string",
+    "products": "string",
+    "target_audience": "string"
+  },
+  "system_prompt": "string (>200 chars, full prompt for the collection agent)",
+  "tone": {
+    "style": "formal | friendly | empathetic | assertive",
+    "use_first_name": true,
+    "prohibited_words": ["ameaçar", "processar"],
+    "preferred_words": ["resolver", "parceria"],
+    "opening_message_template": "string"
+  },
+  "negotiation_policies": {
+    "max_discount_full_payment_pct": 10.0,
+    "max_discount_installment_pct": 5.0,
+    "max_installments": 12,
+    "min_installment_value_brl": 50.0,
+    "discount_strategy": "only_when_resisted | proactive | escalating",
+    "payment_methods": ["pix", "boleto"],
+    "can_generate_payment_link": true
+  },
+  "guardrails": {
+    "never_do": ["Ameaçar o devedor", "Revelar dados de terceiros"],
+    "never_say": ["processo", "cadeia"],
+    "escalation_triggers": ["Devedor solicita humano", "Dívida alta"],
+    "follow_up_interval_days": 3,
+    "max_attempts_before_stop": 10,
+    "must_identify_as_ai": true
+  },
+  "scenario_responses": {
+    "already_paid": "string — como responder quando devedor diz que já pagou",
+    "dont_recognize_debt": "string — quando não reconhece a dívida",
+    "cant_pay_now": "string — quando não pode pagar agora",
+    "aggressive_debtor": "string — quando devedor é agressivo"
+  },
+  "tools": ["generate_payment_link", "check_payment_status"],
+  "metadata": {
+    "version": 1,
+    "generated_at": "2026-02-20T10:30:00",
+    "onboarding_session_id": "uuid",
+    "generation_model": "gpt-4.1-mini"
+  }
+}
+```
+
+### SimulationResult
+
+```json
+{
+  "scenarios": [
+    {
+      "scenario_type": "cooperative | resistant",
+      "debtor_profile": "Maria, 45 anos, dona de padaria, dívida de R$1.200",
+      "conversation": [
+        { "role": "agent", "content": "Olá Maria! Aqui é a assistente..." },
+        { "role": "debtor", "content": "Oi, tudo bem?" }
+      ],
+      "outcome": "Devedor aceitou parcelamento em 3x de R$400",
+      "metrics": {
+        "negotiated_discount_pct": 0,
+        "final_installments": 3,
+        "payment_method": "pix",
+        "resolution": "full_payment | installment_plan | escalated | no_resolution"
+      }
+    }
+  ],
+  "metadata": {}
+}
+```
+
+### AgentAdjustRequest
+
+```json
+{
+  "adjustments": {
+    "tone.style": "empathetic",
+    "negotiation_policies.max_discount_full_payment_pct": 20,
+    "guardrails.must_identify_as_ai": false
+  }
+}
+```
+
+Uses dotted-path notation. Only text-derived fields (`system_prompt`, `scenario_responses`, `tone.opening_message_template`) are regenerated by LLM; all others are applied directly.
+
+### Swagger / OpenAPI
+
+Interactive API docs are auto-generated at `{BACKEND_URL}/docs`. This is the authoritative reference for all schemas and can be used by the frontend team to test endpoints interactively.
+
+---
+
+## 6. Service Architecture
+
+### 6.1 Enrichment Service
 
 ```
 website URL + company name
@@ -173,7 +366,7 @@ website URL + company name
   → Retry once on failure, fallback to minimal profile
 ```
 
-### 5.2 Interview Agent (LangGraph)
+### 6.2 Interview Agent (LangGraph)
 
 **State**: `InterviewState` TypedDict with 10 fields (enrichment_data, core_questions_remaining, current_question, answers, dynamic_questions_asked, max_dynamic_questions, phase, needs_follow_up, follow_up_question, follow_up_count)
 
@@ -191,7 +384,7 @@ initialize → 12 core questions (with up to 2 follow-ups each)
 
 **Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — applied at pop time.
 
-### 5.3 Agent Generator
+### 6.3 Agent Generator
 
 ```
 CompanyProfile + interview_responses + smart_defaults
@@ -201,7 +394,7 @@ CompanyProfile + interview_responses + smart_defaults
   → 2-attempt retry
 ```
 
-### 5.4 Simulation Service
+### 6.4 Simulation Service
 
 ```
 AgentConfig → build_simulation_prompt() — system prompt + 8 config sections + scenario instructions
@@ -210,7 +403,7 @@ AgentConfig → build_simulation_prompt() — system prompt + 8 config sections 
   → 2-attempt retry
 ```
 
-### 5.5 Transcription Service
+### 6.5 Transcription Service
 
 ```
 audio bytes + content_type → validate (format, size <25MB)
@@ -221,7 +414,7 @@ audio bytes + content_type → validate (format, size <25MB)
 
 ---
 
-## 6. Deploy Architecture — PENDING
+## 7. Deploy Architecture — PENDING
 
 ### Requirements
 
@@ -266,7 +459,7 @@ app.add_middleware(
 
 ---
 
-## 7. Frontend Architecture — PENDING
+## 8. Frontend Architecture — PENDING
 
 ### Overview
 
@@ -294,9 +487,21 @@ O frontend precisa manter:
 
 O frontend chama `{BACKEND_URL}/api/v1/...` com JSON. Todos os endpoints são síncronos (sem WebSocket). Loading states são necessários para chamadas lentas (enrich ~15s, generate ~15s, simulate ~20s).
 
+**Referência completa**: Swagger UI em `{BACKEND_URL}/docs` — todos os schemas e endpoints interativos. Ver também Section 5 deste documento para os schemas de resposta completos com exemplos JSON.
+
+### Áudio (transcription)
+
+O frontend pode oferecer gravação de áudio como alternativa ao texto. Fluxo:
+1. Usuário clica no ícone de microfone → `MediaRecorder API` (browser nativo)
+2. Grava áudio em formato `webm` (default do MediaRecorder)
+3. Ao parar, envia para: `POST {BACKEND_URL}/api/v1/sessions/{id}/audio/transcribe` (multipart/form-data, campo `file`)
+4. Resposta: `{ "text": "transcrição em português", "duration_seconds": 12.5 }`
+5. O texto transcrito é usado como `answer` no `POST /interview/answer` com `source: "audio"`
+6. Formatos aceitos: webm, mp4, wav, mpeg, ogg, flac, m4a. Limite: 25MB.
+
 ---
 
-## 8. How to Run
+## 9. How to Run
 
 ### Backend (local)
 
@@ -326,7 +531,7 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 
 ---
 
-## 9. Key Design Decisions (from development)
+## 10. Key Design Decisions (from development)
 
 | Decision | Reason |
 |----------|--------|
@@ -340,7 +545,7 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 
 ---
 
-## 10. Future Production Considerations
+## 11. Future Production Considerations
 
 | Change | From (MVP) | To (Production) |
 |--------|-----------|-----------------|
