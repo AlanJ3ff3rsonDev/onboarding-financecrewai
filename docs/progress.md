@@ -93,6 +93,31 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ---
 
+### 2026-02-20 — Documentation Update: Frontend + Deploy Phase
+
+**Status**: completed
+
+**What was done**:
+- Updated all project docs to reflect backend completion and plan the next phases (deploy + frontend + Directus integration)
+- Created `backend/cli_test.py` — interactive CLI script for manual end-to-end testing (httpx, ANSI colors, supports all question types)
+- **PRD.md**: Status → Active. Marked backend as COMPLETE. Added FR-6 (Frontend: 6 telas), FR-7 (Deploy). Updated core questions from 10 to 12. Removed contact hours. Added platform architecture diagram. Updated Open Questions.
+- **tech_design.md**: Added Lovable/Directus/Railway to stack. Updated project structure with actual test counts (120). Corrected API endpoints to match implementation. Added Deploy section (Dockerfile, CORS). Added Frontend Architecture section. Added Key Design Decisions section.
+- **tasks.md**: Added M6 (Deploy: T26-T28), M7 (Frontend: T29-T35 with Lovable prompts), M8 (Directus: T36). Updated Milestone Overview table. Added T26-T36 to Task Summary. Each M7 task includes copy-paste ready Lovable prompts with endpoints, request/response schemas, and Definition of Done.
+- **progress.md**: This entry.
+
+**Key decisions**:
+- Updated existing docs instead of creating parallel new ones (user's request)
+- M7 tasks include detailed Lovable prompts — user can copy-paste them directly into Lovable for frontend generation
+- M8 (Directus integration) marked as "Future" — AgentConfig stays in onboarding backend for now
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Next task: T26 (CORS configuration) — first task of M6 (Deploy)
+
+---
+
 ### 2026-02-20 — T24: Simulation endpoint
 
 **Status**: completed

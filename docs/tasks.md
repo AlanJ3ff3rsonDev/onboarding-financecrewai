@@ -12,14 +12,17 @@
 
 ## Milestone Overview
 
-| Milestone | Description | Tasks | Value Delivered |
-|-----------|-------------|-------|----------------|
-| **M0** | Project Setup | T01-T04 | FastAPI running, can create sessions, DB works |
-| **M1** | Enrichment | T05-T07 | Given a website URL, system extracts structured company data |
-| **M2** | Interview (Wizard) | T08-T17 | AI-driven interview collects all SOP data via text/audio |
-| **M3** | Agent Generation | T18-T22 | System generates complete agent config JSON from interview data |
-| **M4** | Simulation | T23-T24 | System generates 2 realistic simulated conversations |
-| **M5** | Integration | T25 | Full end-to-end flow works from session creation to simulation |
+| Milestone | Description | Tasks | Status |
+|-----------|-------------|-------|--------|
+| **M0** | Project Setup | T01-T04 | DONE |
+| **M1** | Enrichment | T05-T07 | DONE |
+| **M2** | Interview (Wizard) | T08-T17 | DONE |
+| **M3** | Agent Generation | T18-T22 | DONE |
+| **M4** | Simulation | T23-T24 | DONE |
+| **M5** | Integration Test | T25 | DONE |
+| **M6** | Deploy | T26-T28 | Pending |
+| **M7** | Frontend Onboarding (Lovable) | T29-T35 | Pending |
+| **M8** | Integração Directus | T36 | Future |
 
 ---
 
@@ -773,6 +776,442 @@
 
 ---
 
+## M6: Deploy
+
+### T26: Adicionar CORS no FastAPI
+
+**Objective**: Backend aceita requests do frontend Lovable.
+
+**Dependencies**: T25
+
+**Definition of Done**:
+- `CORSMiddleware` adicionado em `app/main.py`
+- Origens permitidas: `portal.financecrew.ai`, `localhost:*` (via `ALLOWED_ORIGINS` env var)
+- Teste manual: request cross-origin funciona
+
+**Status**: `pending`
+
+---
+
+### T27: Criar Dockerfile + config Railway
+
+**Objective**: Backend pode ser deployado num container com Playwright/Chromium.
+
+**Dependencies**: T26
+
+**Definition of Done**:
+- `Dockerfile` na raiz de `backend/` com Python 3.13 + dependências Playwright
+- `railway.toml` (ou equivalente) para config de deploy
+- Build local funciona: `docker build -t onboarding .`
+- Container roda localmente: `docker run -p 8000:8000 -e OPENAI_API_KEY=... onboarding`
+
+**Status**: `pending`
+
+---
+
+### T28: Deploy no Railway + testar URL pública
+
+**Objective**: Backend acessível via URL pública na internet.
+
+**Dependencies**: T27
+
+**Definition of Done**:
+- Backend deployado no Railway (ou Render)
+- URL pública funciona: `GET /health` retorna `{"status": "ok"}`
+- `POST /sessions` funciona da URL pública
+- `OPENAI_API_KEY` configurado como variável de ambiente
+- Swagger UI acessível via URL pública
+
+**Status**: `pending`
+
+---
+
+## M7: Frontend Onboarding (Lovable)
+
+> Cada task abaixo inclui um **prompt para o Lovable** com objetivo, endpoints, e Definition of Done. Copie o prompt inteiro para o Lovable.
+
+### T29: Tela de boas-vindas
+
+**Objective**: Primeira tela do onboarding — coleta dados da empresa e cria sessão no backend.
+
+**Dependencies**: T28
+
+**Lovable Prompt**:
+```
+Crie uma tela de boas-vindas para o onboarding de cobrança.
+
+Contexto: Esta é a primeira tela do fluxo de onboarding. O usuário acabou de
+fazer login na plataforma pela primeira vez e precisa configurar seu agente
+de cobrança.
+
+Layout:
+- Título: "Vamos configurar seu agente de cobrança"
+- Subtítulo: "Em poucos minutos, vamos criar um agente personalizado para sua empresa"
+- Campo: "Nome da empresa" (obrigatório)
+- Campo: "Site da empresa" (obrigatório, placeholder: "exemplo.com.br")
+- Campo: "CNPJ" (opcional, placeholder: "XX.XXX.XXX/XXXX-XX")
+- Botão: "Começar" (desabilitado até nome e site preenchidos)
+
+Ao clicar "Começar":
+1. POST para {BACKEND_URL}/api/v1/sessions
+   Body: { "company_name": "...", "website": "...", "cnpj": "..." }
+   Resposta: { "session_id": "uuid", "status": "created" }
+2. Salvar session_id no estado da aplicação
+3. Navegar para a próxima tela (enriquecimento)
+
+BACKEND_URL: [URL do Railway quando deployar]
+
+Estilo: limpo, moderno, cards com sombra suave. Cores da marca CollectAI.
+```
+
+**Definition of Done**:
+- Tela renderiza com os 3 campos
+- POST para backend cria sessão com sucesso
+- session_id salvo e disponível para próximas telas
+- Navega para tela de enriquecimento
+
+**Status**: `pending`
+
+---
+
+### T30: Tela de enriquecimento
+
+**Objective**: Mostra loading enquanto analisa o site, depois mostra dados extraídos.
+
+**Dependencies**: T29
+
+**Lovable Prompt**:
+```
+Crie a tela de enriquecimento do onboarding.
+
+Contexto: O usuário acabou de informar o nome e site da empresa. Agora o
+backend está analisando o site com IA para extrair informações.
+
+Fluxo:
+1. Ao montar a tela, fazer POST para {BACKEND_URL}/api/v1/sessions/{session_id}/enrich
+   (sem body — o backend já tem o site da sessão)
+   Resposta: { "status": "enriched", "enrichment_data": { company_name, segment,
+   products_description, target_audience, communication_tone, payment_methods_mentioned,
+   collection_relevant_context } }
+
+2. Enquanto espera (~15 segundos):
+   - Mostrar animação de loading com mensagem: "Analisando o site da sua empresa..."
+   - Texto motivacional: "Estamos usando IA para entender melhor seu negócio"
+
+3. Quando retornar:
+   - Mostrar card com dados extraídos (company_name, segment, products_description, etc.)
+   - Cada campo como label + valor em texto
+   - Campos vazios ("") não são mostrados
+   - Botão: "Continuar para a entrevista"
+
+4. Se der erro (status != 200):
+   - Mostrar mensagem: "Não conseguimos analisar o site, mas você pode continuar normalmente"
+   - Botão: "Continuar mesmo assim"
+
+Ao clicar "Continuar": navegar para tela de entrevista.
+
+Estilo: cards informativos, ícones por campo (empresa, produtos, público), cores suaves.
+```
+
+**Definition of Done**:
+- Loading state aparece durante a chamada
+- Dados extraídos são exibidos corretamente
+- Erro é tratado graciosamente (não trava)
+- Navega para entrevista
+
+**Status**: `pending`
+
+---
+
+### T31: Tela de entrevista — wizard de perguntas
+
+**Objective**: Apresenta perguntas uma por uma, coleta respostas, mostra progresso. Esta é a tela mais complexa.
+
+**Dependencies**: T30
+
+**Lovable Prompt**:
+```
+Crie a tela de entrevista (wizard) do onboarding.
+
+Contexto: O usuário vai responder perguntas sobre seu negócio de cobrança.
+As perguntas vêm do backend uma por uma. Existem 3 tipos: text, select, multiselect.
+Algumas respostas geram follow-ups da IA pedindo mais detalhes.
+
+Layout:
+- Barra de progresso no topo (core_answered / 12 para fase core)
+- Indicador de fase: "Pergunta X de 12" (core) ou "Pergunta adicional" (dynamic)
+- Card central com a pergunta:
+  - Texto da pergunta (grande, negrito)
+  - Dica de contexto (se existir, texto menor abaixo)
+  - Se tem pre_filled_value: mostrar como sugestão com "Confirmamos do seu site: ..."
+  - Input baseado no tipo:
+    - "text": textarea multilinha
+    - "select": lista de radio buttons com as opções
+    - "multiselect": lista de checkboxes com as opções
+- Botão "Próxima" (desabilitado até ter resposta)
+
+Fluxo da API:
+1. Ao montar: GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/next
+   Resposta: { question_id, question_text, question_type, options, pre_filled_value,
+   phase, context_hint }
+
+2. Ao clicar "Próxima":
+   POST {BACKEND_URL}/api/v1/sessions/{session_id}/interview/answer
+   Body: { "question_id": "core_1", "answer": "texto da resposta", "source": "text" }
+
+   Para select: answer = o value da opção selecionada (ex: "d5")
+   Para multiselect: answer = values separados por vírgula (ex: "pix,boleto,cartao_credito")
+   Para text: answer = texto digitado (ou pre_filled_value se aceito)
+
+   Resposta: { "received": true, "next_question": {...} ou null, "phase": "..." }
+
+3. Se next_question existe:
+   - Se question_id começa com "followup_": é um aprofundamento da IA
+     Mostrar com destaque: "A IA quer saber mais sobre sua resposta:"
+   - Senão: é a próxima pergunta normal
+   - Atualizar a tela com a nova pergunta
+
+4. Se next_question é null:
+   - Se phase == "defaults": navegar para tela de smart defaults
+   - Se phase == "dynamic": fazer GET /interview/next para buscar próxima pergunta dinâmica
+
+5. Para barra de progresso:
+   GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/progress
+   Resposta: { phase, core_answered, core_total, dynamic_answered, is_complete }
+   Chamar após cada resposta para atualizar a barra.
+
+Estilo: wizard limpo, uma pergunta por vez, transições suaves entre perguntas.
+```
+
+**Definition of Done**:
+- Perguntas aparecem uma por uma com tipo correto (text/select/multiselect)
+- Respostas são enviadas e próxima pergunta aparece
+- Follow-ups da IA são apresentados corretamente
+- Barra de progresso atualiza
+- Transição para defaults quando entrevista completa
+
+**Status**: `pending`
+
+---
+
+### T32: Tela de smart defaults
+
+**Objective**: Mostra configurações pré-preenchidas para confirmação/ajuste.
+
+**Dependencies**: T31
+
+**Lovable Prompt**:
+```
+Crie a tela de smart defaults do onboarding.
+
+Contexto: A entrevista terminou. Agora mostramos configurações padrão que o
+usuário pode aceitar ou ajustar antes de gerar o agente.
+
+Fluxo:
+1. Ao montar: GET {BACKEND_URL}/api/v1/sessions/{session_id}/interview/defaults
+   Resposta: { "defaults": { follow_up_interval_days, max_contact_attempts,
+   use_first_name, identify_as_ai, min_installment_value, discount_strategy,
+   payment_link_generation, max_discount_installment_pct }, "confirmed": false }
+
+2. Mostrar cada configuração como um item editável:
+   - "Intervalo entre follow-ups": input numérico (dias)
+   - "Máximo de tentativas": input numérico
+   - "Usar primeiro nome": toggle (sim/não)
+   - "Identificar como IA": toggle (sim/não)
+   - "Valor mínimo da parcela": input monetário (R$)
+   - "Estratégia de desconto": select (Apenas quando resiste / Proativo / Escalonado)
+   - "Gerar link de pagamento": toggle (sim/não)
+   - "Desconto máx. parcelamento": input percentual (%)
+
+3. Botão: "Confirmar e gerar agente"
+   POST {BACKEND_URL}/api/v1/sessions/{session_id}/interview/defaults
+   Body: { todos os 8 campos com valores atuais/editados }
+   Resposta: { "confirmed": true, "phase": "complete" }
+
+4. Navegar para tela de geração do agente.
+
+Estilo: formulário organizado em cards, valores padrão já preenchidos,
+dicas sobre cada configuração.
+```
+
+**Definition of Done**:
+- Defaults carregam e mostram corretamente
+- Usuário pode editar qualquer valor
+- POST salva os defaults confirmados
+- Navega para geração do agente
+
+**Status**: `pending`
+
+---
+
+### T33: Tela do agente gerado
+
+**Objective**: Mostra o AgentConfig gerado — system prompt, policies, guardrails. Opção de ajustar.
+
+**Dependencies**: T32
+
+**Lovable Prompt**:
+```
+Crie a tela de visualização do agente gerado no onboarding.
+
+Contexto: O backend vai gerar um agente de cobrança completo baseado nas
+respostas da entrevista. A geração leva ~15 segundos.
+
+Fluxo:
+1. Ao montar: POST {BACKEND_URL}/api/v1/sessions/{session_id}/agent/generate
+   Resposta: { "status": "generated", "agent_config": { agent_type,
+   company_context, system_prompt, tone, negotiation_policies, guardrails,
+   scenario_responses, tools, metadata } }
+
+2. Enquanto espera (~15s):
+   - Loading: "Gerando seu agente de cobrança personalizado..."
+   - Texto: "Estamos configurando tom, regras de negociação, e cenários"
+
+3. Quando retornar, mostrar em seções colapsáveis/tabs:
+   - "System Prompt" — texto completo do prompt (área de texto expandível)
+   - "Tom" — style, uso de primeiro nome, palavras proibidas
+   - "Negociação" — desconto max, parcelas max, métodos de pagamento
+   - "Guardrails" — lista de "nunca fazer", "nunca dizer", triggers de escalação
+   - "Cenários" — respostas para: já pagou, não reconhece, não pode pagar, agressivo
+   - "Ferramentas" — lista de tools disponíveis
+
+4. Botão principal: "Gerar simulação" → navegar para tela de simulação
+5. Botão secundário: "Ajustar agente" (modal ou inline editing, opcional para V1)
+
+Estilo: dashboard informativo, seções com ícones, collapsible cards.
+```
+
+**Definition of Done**:
+- Loading durante geração
+- AgentConfig exibido em seções organizadas
+- System prompt legível e completo
+- Botão navega para simulação
+
+**Status**: `pending`
+
+---
+
+### T34: Tela de simulação
+
+**Objective**: Mostra 2 conversas simuladas como chat — o "AHA Moment" do onboarding.
+
+**Dependencies**: T33
+
+**Lovable Prompt**:
+```
+Crie a tela de simulação do onboarding — esta é a tela mais impactante.
+
+Contexto: O backend gera 2 conversas simuladas realistas entre o agente de
+cobrança e devedores. Uma com devedor cooperativo, outra com resistente.
+A geração leva ~20 segundos.
+
+Fluxo:
+1. Ao montar: POST {BACKEND_URL}/api/v1/sessions/{session_id}/simulation/generate
+   Resposta: { "status": "completed", "simulation_result": { "scenarios": [
+     { scenario_type: "cooperative"|"resistant", debtor_profile, conversation: [
+       { role: "agent"|"debtor", content }
+     ], outcome, metrics: { negotiated_discount_pct, final_installments,
+     payment_method, resolution } }
+   ] } }
+
+2. Enquanto espera (~20s):
+   - Loading: "Simulando conversas do seu agente..."
+   - Texto: "Gerando cenários realistas com devedor cooperativo e resistente"
+
+3. Quando retornar, mostrar 2 tabs ou cards lado a lado:
+   - Tab 1: "Devedor Cooperativo" (ícone verde)
+   - Tab 2: "Devedor Resistente" (ícone vermelho/laranja)
+
+   Cada tab mostra:
+   - Perfil do devedor (debtor_profile, se existir)
+   - Conversa como chat bubbles:
+     - Mensagens do agente: alinhadas à direita, cor da marca
+     - Mensagens do devedor: alinhadas à esquerda, cor cinza
+   - Card de resultado no final:
+     - Resolução (pagamento, parcelamento, escalado)
+     - Desconto negociado (se aplicável)
+     - Parcelas (se aplicável)
+
+4. Botões:
+   - "Aprovar agente" → mostra mensagem de sucesso, onboarding completo
+   - "Regenerar simulação" → chama POST /simulation/generate novamente
+   - "Voltar e ajustar" → volta para tela do agente
+
+Estilo: interface de chat moderna (como WhatsApp), bolhas de mensagem,
+avatar para agente e devedor, cores distintas por role.
+```
+
+**Definition of Done**:
+- Loading durante geração
+- 2 cenários mostrados como chat
+- Mensagens formatadas como bolhas (agent vs debtor)
+- Resultado/métricas visíveis
+- Botões de ação funcionam
+
+**Status**: `pending`
+
+---
+
+### T35: Integração de fluxo + estado global
+
+**Objective**: Conectar todas as 6 telas com navegação e estado compartilhado (session_id).
+
+**Dependencies**: T29-T34
+
+**Lovable Prompt**:
+```
+Integre as 6 telas de onboarding num fluxo único com navegação e estado global.
+
+Contexto: As telas já existem individualmente. Agora precisamos:
+
+1. Estado global: session_id deve ser acessível em todas as telas.
+   Pode usar Context, Zustand, ou URL params.
+
+2. Navegação sequencial:
+   Boas-vindas → Enriquecimento → Entrevista → Defaults → Agente → Simulação
+   - Navegação só para frente (sem botão "voltar" nas telas de entrevista)
+   - Se refresh, pode recomeçar ou restaurar do session_id
+
+3. Trigger de onboarding: quando o usuário logado não tem nenhum agente criado,
+   redirecionar para o onboarding ao invés do dashboard.
+
+4. Conclusão: quando o usuário aprova a simulação, marcar onboarding como completo
+   e redirecionar para o dashboard normal da plataforma.
+
+5. Error handling global: se qualquer chamada de API falhar, mostrar toast/banner
+   com mensagem amigável e opção de tentar novamente.
+
+6. BACKEND_URL como variável de ambiente no Lovable.
+```
+
+**Definition of Done**:
+- Fluxo completo funciona do início ao fim
+- session_id persiste entre telas
+- Erro em qualquer ponto não trava o app
+- Onboarding trigger funciona no primeiro login
+- Conclusão redireciona para dashboard
+
+**Status**: `pending`
+
+---
+
+## M8: Integração Directus (futuro)
+
+### T36: Salvar AgentConfig no Directus
+
+**Objective**: Quando onboarding completa, salvar o AgentConfig na collection de agents do Directus.
+
+**Dependencies**: T35
+
+**Definition of Done**:
+- Mapear campos do AgentConfig para a collection "agents" no Directus
+- Endpoint ou lógica que envia o AgentConfig para o Directus
+- Agent aparece na tela de agents da plataforma
+
+**Status**: `pending`
+
+---
+
 ## Task Summary
 
 | ID | Task | Milestone | Dependencies | Status |
@@ -802,3 +1241,14 @@
 | T23 | Simulation prompt + service | M4 | T18 | `done` |
 | T24 | Simulation endpoint | M4 | T21, T23 | `done` |
 | T25 | End-to-end integration test | M5 | T24 | `done` |
+| T26 | CORS configuration | M6 | T25 | `pending` |
+| T27 | Dockerfile + Railway config | M6 | T26 | `pending` |
+| T28 | Deploy to Railway + verify | M6 | T27 | `pending` |
+| T29 | Tela de Boas-vindas | M7 | T28 | `pending` |
+| T30 | Tela de Enriquecimento | M7 | T29 | `pending` |
+| T31 | Tela de Entrevista (wizard) | M7 | T30 | `pending` |
+| T32 | Tela de Smart Defaults | M7 | T31 | `pending` |
+| T33 | Tela do Agente Gerado | M7 | T32 | `pending` |
+| T34 | Tela de Simulação | M7 | T33 | `pending` |
+| T35 | Integração de fluxo completo | M7 | T34 | `pending` |
+| T36 | Salvar AgentConfig no Directus | M8 | T35 | `pending` |

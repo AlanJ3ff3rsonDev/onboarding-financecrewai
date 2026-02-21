@@ -1,4 +1,4 @@
-# PRD: Self-Service Onboarding — Backend MVP
+# PRD: Self-Service Onboarding — CollectAI
 
 ## Document Info
 
@@ -6,8 +6,9 @@
 |-------|-------|
 | **Feature** | Self-service onboarding for CollectAI |
 | **Owner** | Francisco (Co-founder) |
-| **Status** | Draft |
+| **Status** | Active |
 | **Created** | 2026-02-19 |
+| **Updated** | 2026-02-20 |
 | **Reference** | `pesquisa_onboarding_self_service_v2.md` |
 
 ---
@@ -58,324 +59,229 @@ Build a **self-service onboarding system** where a client:
 
 ---
 
-## 3. MVP Scope
+## 3. Project Status & Scope
 
-### In Scope
+### Backend API — COMPLETE (T01-T25)
 
-| Component | Description |
-|-----------|-------------|
-| **Enrichment** | Website scraping + LLM extraction → understand the business automatically |
-| **Wizard/Interview** | Structured SOP questions + free text + audio + AI follow-ups |
-| **Agent Generation** | Generate complete agent config JSON from interview data |
-| **Simulation** | Generate 2 simulated collection conversations based on the agent config |
-| **Audio Transcription** | Accept audio uploads, transcribe via Whisper, return text |
+| Component | Status | Details |
+|-----------|--------|---------|
+| **Enrichment** | Done | Website scraping (Playwright) + LLM extraction (GPT-4.1-mini) |
+| **Wizard/Interview** | Done | 12 core questions + AI follow-ups (max 2/question) + dynamic questions (up to 8) + smart defaults |
+| **Agent Generation** | Done | Context engineering prompt + structured output + sanity checks + adjustment endpoint |
+| **Simulation** | Done | 2 simulated conversations (cooperative + resistant) from AgentConfig |
+| **Audio Transcription** | Done | GPT-4o-mini-transcribe, supports 11 audio formats, Portuguese |
+| **Integration Test** | Done | End-to-end test with real OpenAI API — 120/120 tests passing |
 
-### Out of Scope (for this MVP)
+### Deploy — NEXT (M6)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| **CORS** | Pending | Allow `portal.financecrew.ai` to call the API |
+| **Containerization** | Pending | Dockerfile with Playwright/Chromium |
+| **Cloud Deploy** | Pending | Railway or Render — public URL |
+
+### Frontend Onboarding — NEXT (M7)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| **6 telas de onboarding** | Pending | Lovable (React/TypeScript), integrado com backend API |
+| **Integração com plataforma** | Pending | Trigger no primeiro login, antes de criar primeiro agent |
+
+### Out of Scope (this initiative)
 
 | Component | Reason |
 |-----------|--------|
-| Authentication | Existing platform handles auth |
-| Payment/Billing | Separate feature, will be built later |
-| Campaign Launch | Existing mechanism in platform, will be coupled later |
-| Frontend (Lovable) | Will be built separately after backend is validated |
+| Authentication | Existing platform (Directus) handles auth |
+| Payment/Billing | Separate feature |
+| Campaign Launch | Existing mechanism in platform |
 | WhatsApp Integration | Existing system, agent config will be plugged into it |
-| Production Infrastructure | Dev team takes over if MVP validates |
+| Directus Integration | Future — save AgentConfig to platform's agent database |
 
 ---
 
-## 4. User Flow (MVP)
+## 4. Platform Architecture
 
 ```
-[1] Enter website URL + CNPJ
+┌─────────────────────────────────────────────────────┐
+│              USUÁRIO (browser)                       │
+│           portal.financecrew.ai                      │
+└──────────┬──────────────────────┬───────────────────┘
+           │                      │
+           ▼                      ▼
+┌──────────────────┐   ┌─────────────────────────┐
+│  Plataforma      │   │  Telas de Onboarding    │
+│  (campanhas,     │   │  (wizard, agent,         │
+│   conversas,     │   │   simulação)             │
+│   agents)        │   │                          │
+└────────┬─────────┘   └────────┬────────────────┘
+         │                      │
+         ▼                      ▼
+┌──────────────────┐   ┌─────────────────────────┐
+│    Directus       │   │  Backend Onboarding     │
+│  (REST/GraphQL)   │   │  (FastAPI + SQLite)     │
+│  users, campaigns │   │  scraping, LLM, agent   │
+│  conversations    │   │  generation, simulation │
+│  agents (storage) │   │                         │
+└──────────────────┘   └───────────┬─────────────┘
+                                   │
+                                   ▼
+                          ┌────────────────┐
+                          │   OpenAI API   │
+                          │  GPT-4.1-mini  │
+                          └────────────────┘
+```
+
+**Frontend**: Lovable (React/TypeScript) → `portal.financecrew.ai`
+**Backend principal**: Directus — users, campaigns, conversations, agents
+**Backend onboarding**: FastAPI — scraping, entrevista, geração de agente, simulação
+**Trigger**: Primeiro login do cliente (até criar primeiro agent)
+
+---
+
+## 5. User Flow
+
+```
+[1] Primeiro login na plataforma
          ↓
-[2] System enriches (scraping + CNPJ) — shows what it learned
+[2] Tela de boas-vindas: nome, site, CNPJ (opcional)
          ↓
-[3] User confirms/corrects enriched data
+[3] Sistema analisa o site (scraping + LLM) — mostra dados extraídos
          ↓
-[4] Select agent type (compliant vs non-compliant)
+[4] Entrevista: 12 perguntas sobre o negócio — text/audio, com follow-ups da IA
          ↓
-[5] Wizard: Business questions (SOP) — text or audio, AI deepens
+[5] Perguntas dinâmicas da IA (2-8 perguntas específicas para o negócio)
          ↓
-[6] Wizard: Agent configuration questions — policies, tone, rules
+[6] Confirmação de defaults (intervalo follow-up, max parcelas, estratégia desconto)
          ↓
-[7] System generates agent config JSON
+[7] Sistema gera AgentConfig JSON (system prompt, policies, guardrails)
          ↓
-[8] System generates 2 simulated conversations
+[8] Sistema gera 2 conversas simuladas (cooperativo + resistente)
          ↓
-[9] User reviews simulation and can request adjustments
+[9] Usuário revisa e pode ajustar/regenerar
 ```
 
 ---
 
-## 5. Functional Requirements
+## 6. Functional Requirements
 
-### FR-1: Enrichment
+### FR-1: Enrichment — IMPLEMENTED
 
 **Input**: Company name + website URL + CNPJ (stored as reference, not queried)
 
 **Processing**:
-- Scrape website with headless browser (Playwright)
-- Extract structured data via LLM: what the company does, products/services, target audience, communication tone, payment methods mentioned
-- CNPJ is stored in the session for future use (platform integration) but NOT queried against any API
+- Scrape website with headless browser (Playwright, domcontentloaded + 3s wait)
+- Extract structured data via LLM (GPT-4.1-mini, JSON mode)
+- CNPJ is stored in the session for future use but NOT queried against any API
 
-**Output**: CompanyProfile JSON containing:
-- Company name (as provided by user)
-- Segment/industry (extracted from website)
-- What they sell (products/services description)
-- Target audience (B2B, B2C, both)
-- Communication tone detected from website
-- Payment methods mentioned on site
-- Any collection-relevant context found
+**Output**: CompanyProfile JSON (7 fields: company_name, segment, products_description, target_audience, communication_tone, payment_methods_mentioned, collection_relevant_context)
 
-**Requirements**:
-- Must complete in < 30 seconds
-- If website scraping fails, return empty profile — user fills info manually in interview
-- No external API costs (no CNPJ lookup APIs)
+### FR-2: Wizard / Interview — IMPLEMENTED
 
-### FR-2: Wizard / Interview
+**Core concept**: AI-driven interview that collects everything needed to create a collection agent. Adaptive approach: 12 core questions → AI follow-ups → dynamic questions → smart defaults.
 
-**Core concept**: An AI-driven interview that collects everything needed to create a collection agent. The approach is **adaptive, not exhaustive**: a small set of core questions everyone answers, then the AI decides which follow-ups are relevant for THAT specific business.
+**Design principle**: ~5-8 minutes. AI achieves depth through smart follow-ups, not quantity.
 
-**Design principle**: The interview should take **5-8 minutes**, not 15-20. The AI achieves depth through smart follow-ups, not through quantity of fixed questions. Many configuration values have sensible defaults that the user just confirms.
+#### Layer 1: Core Questions (12, mandatory)
 
-All questions support **text input + audio upload**. Each question with options also has a free-text "Other" option.
+| # | Question (Portuguese) | Type | Follow-up? |
+|---|----------------------|------|------------|
+| 1 | O que sua empresa vende ou oferece? | text | Yes (AI evaluates) |
+| 2 | Como seus clientes normalmente pagam? | multiselect | No (unless "outro") |
+| 3 | Quando você considera uma conta vencida? | select | No (unless "outro") |
+| 4 | Descreva seu fluxo de cobrança atual | text | Yes (AI evaluates) |
+| 5 | Qual tom o agente deve usar? | select | No (unless "depende") |
+| 6 | Desconto para pagamento integral imediato? | select | No (unless "outro") |
+| 7 | Parcelamento — máximo de parcelas? | select | No |
+| 8 | Juros por atraso? | select | No (unless "outro") |
+| 9 | Multa por atraso? | select | No (unless "outro") |
+| 10 | Quando escalar para humano? | multiselect | No (unless "outro") |
+| 11 | Coisas que o agente NUNCA deve fazer/dizer | text | Yes (AI evaluates) |
+| 12 | Razões mais comuns para não pagar | text | Yes (AI evaluates) |
 
-#### Layer 1: Core Questions (8-10, mandatory for everyone)
+**Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — pre-filled from website data when available.
 
-These are the absolute minimum to generate a decent agent. Every client answers these.
+**AI follow-ups**: Max 2 per question. Text questions are always evaluated. Select/multiselect only evaluated if answer contains "outro" or "depende".
 
-| # | Question | Type | Options | Why it's core |
-|---|----------|------|---------|---------------|
-| 1 | What does your company sell or provide? | text/audio | (pre-filled from enrichment, user confirms/edits) | Defines the context for the entire agent |
-| 2 | How do your customers typically pay? | multiselect | PIX, Boleto, Credit card, Bank transfer, Cash, Other | Determines what payment options the agent can offer |
-| 3 | When do you consider an account past-due? | select + text | D+0, D+1, D+5, D+15, D+30, Other | Defines when the agent should start acting |
-| 4 | Describe your current collection flow — from first delay to resolution | text/audio | (open-ended) | The single most important SOP question — captures the entire process |
-| 5 | What tone should the agent use? | select + text | Formal, Friendly but firm, Empathetic, Direct/assertive, Depends (explain) | Sets the entire communication style |
-| 6 | Max discount for immediate full payment? | slider | 0% to 50% (default: 10%) | Critical guardrail — agent can't exceed this |
-| 7 | Max number of installments? | select | 2x, 3x, 4x, 6x, 10x, 12x, 18x, 24x | Critical guardrail |
-| 8 | When should the agent escalate to a human? | multiselect + text | Debtor requests human, Debt above X value, Lawsuit mentioned, After N failed attempts, Debtor aggressive, Fraud/unrecognized debt, Other | Safety guardrail |
-| 9 | Things the agent should NEVER do or say | text/audio | (open-ended) | Critical guardrail — what to absolutely avoid |
-| 10 | What are the most common reasons debtors give for not paying? | text/audio | (open-ended) | Prepares the agent for real scenarios |
+#### Layer 2: AI-Driven Dynamic Questions (2-8, context-dependent)
 
-#### Layer 2: AI-Driven Dynamic Questions (variable, context-dependent)
-
-After the core questions, the **Interview Agent** (LLM) analyzes:
-- The core answers
-- The enrichment data (what the website says about the business)
-- What's MISSING that would significantly improve agent quality
-
-Then it generates **3-8 additional targeted questions**, specific to that business. The AI picks from a question bank AND can create new questions on the fly.
-
-**Question bank the AI draws from** (not all will be asked — AI picks the relevant ones):
-
-| Category | Example Questions | Trigger (when AI asks this) |
-|----------|-------------------|---------------------------|
-| **Business model** | "Is billing recurring or one-time?", "What's the typical ticket value?" | Always useful, but AI skips if enrichment already answered |
-| **Debtor profile** | "Are debtors individuals or companies?", "Is there an ongoing relationship (churn risk)?" | If not clear from core answers |
-| **Negotiation depth** | "Should discounts be proactive or only when resisted?", "Max discount for installments?" | If user indicated flexible discount policy |
-| **Scenario handling** | "How should the agent handle 'I already paid'?", "How to handle 'I don't recognize this debt'?" | AI picks the 2-3 most relevant scenarios for the segment |
-| **Legal/judicial** | "Do you have a legal collection process for larger debts?", "Above what value?" | If high-value debts or user mentioned legal |
-| **Communication** | "How should the agent open the conversation?", "Words to avoid?" | If user chose nuanced tone or has brand-specific language |
-| **Segmentation** | "Do you segment by debt amount or aging?", "Different rules for different segments?" | If user has diverse debt portfolio |
-| **Current pain** | "What frustrates you most about your current collection process?", "What would success look like?" | To capture intent and expectations |
-
-**AI follow-up deepening** (within any question):
-- Short answer → "Can you tell me more? The more detail, the better your agent will perform."
-- Ambiguous answer → "Can you give me a specific example? For a R$5,000 debt that's 30 days late, what would you do?"
-- Domain-specific triggers → "You mentioned construction financing — do debtors have property as collateral? Does that change how you collect?"
+After core questions, the AI generates targeted questions from 8 categories (business_model, debtor_profile, negotiation_depth, scenario_handling, legal_judicial, communication, segmentation, current_pain). Completeness evaluated after each: confidence >= 7/10 → stops.
 
 #### Layer 3: Smart Defaults (confirm or adjust)
 
-These values have sensible defaults based on Brazilian collection regulations and best practices. They're shown as a **confirmation screen** after the interview — user just reviews and tweaks if needed.
+| Setting | Default |
+|---------|---------|
+| Follow-up interval | Every 3 days |
+| Max contact attempts | 10 |
+| Use debtor's first name | Yes |
+| Identify as AI | Yes |
+| Min installment value | R$50 |
+| Discount strategy | Only when debtor resists |
+| Payment link generation | Yes (PIX + Boleto) |
+| Max discount for installments | 5% |
 
-| Setting | Default | Basis |
-|---------|---------|-------|
-| Contact hours (weekdays) | 08:00-20:00 | CDC legal requirement |
-| Contact hours (Saturday) | 08:00-14:00 | Industry standard |
-| Contact on Sundays | No | CDC recommendation |
-| Follow-up interval | Every 3 days | Industry best practice |
-| Max contact attempts | 10 | Reasonable before pause |
-| Use debtor's first name | Yes | Higher engagement |
-| Identify as AI | Yes | PL 2338/2023 compliance |
-| Min installment value | R$50 | Practical minimum |
-| Discount strategy | Only when debtor resists | Better margins |
-| Payment link generation | Yes (PIX + Boleto) | Standard in Brazil |
-| Max discount for installments | 5% | Conservative default |
+### FR-3: Audio Transcription — IMPLEMENTED
 
-**Total interview time**: ~5-8 minutes (10 core + 3-8 dynamic + 30s default review)
+GPT-4o-mini-transcribe, supports 11 formats (webm, mp4, wav, mpeg, ogg, flac, m4a, etc.), max 25MB, Portuguese.
 
-### FR-3: Audio Transcription
+### FR-4: Agent Generation — IMPLEMENTED
 
-**Input**: Audio file (webm, mp4, wav, mpeg) up to 25MB
+Context engineering prompt with all data → GPT-4.1-mini structured output → AgentConfig JSON. Sanity checks auto-correct: discount caps, installment ranges, system prompt quality (>200 chars). Adjustment endpoint for targeted changes + LLM regeneration of text fields.
 
-**Processing**: Send to OpenAI Whisper API (or GPT-4o-mini Transcribe for cost savings)
+### FR-5: Simulation — IMPLEMENTED
 
-**Output**: Transcribed text in the original language (Portuguese)
+Single LLM call generates 2 conversations (cooperative + resistant, 8-15 messages each). Agent follows exact config (tone, discounts, guardrails). Scenario responses validated against config constraints.
 
-**Requirements**:
-- Transcription < 5 seconds for typical answers (30s-2min audio)
-- Return text to be used as the answer to the wizard question
-- Support Portuguese (primary) and English
+### FR-6: Frontend Onboarding — PENDING
 
-### FR-4: Agent Generation
+**6 telas no Lovable** que guiam o usuário pelo fluxo completo:
 
-**Input**: CompanyProfile (from enrichment) + all wizard responses (structured + free text)
+| # | Tela | Função | API Backend |
+|---|------|--------|-------------|
+| 1 | **Boas-vindas** | Coleta nome, site, CNPJ (opcional) | `POST /sessions` |
+| 2 | **Enriquecimento** | Loading + mostra dados extraídos | `POST /enrich` → `GET /enrichment` |
+| 3 | **Entrevista (wizard)** | Pergunta por pergunta, barra de progresso, text/select/multiselect, follow-ups | `GET /interview/next` → `POST /interview/answer` (loop) |
+| 4 | **Smart Defaults** | Mostra defaults, toggle/ajustar, confirmar | `GET /interview/defaults` → `POST /interview/defaults` |
+| 5 | **Agente gerado** | System prompt, policies, guardrails, cenários. Opção de ajustar. | `POST /agent/generate` → `GET /agent` → `PUT /agent/adjust` |
+| 6 | **Simulação** | 2 conversas como chat (cooperativo + resistente). Aprovar ou regenerar. | `POST /simulation/generate` → `GET /simulation` |
 
-**Processing**:
-- Combine all context using context engineering principles
-- Send to LLM with structured output schema
-- Validate output against schema (Pydantic)
-- Apply sanity checks (discounts within limits, valid hours, etc.)
+**UX requirements**:
+- Progress bar durante a entrevista
+- Loading states durante chamadas de API (enrichment ~15s, generation ~15s, simulation ~20s)
+- Todas as perguntas em português
+- Support para respostas em áudio (microfone no browser)
+- Navegação: só para frente (sem voltar para perguntas anteriores)
+- Responsivo (mobile-friendly — muitos SMB owners usam celular)
 
-**Output**: AgentConfig JSON containing:
+### FR-7: Deploy — PENDING
 
-```
-{
-  "agent_type": "compliant" | "non_compliant",
-  "company_context": {
-    "name": "...",
-    "segment": "...",
-    "products": "...",
-    "target_audience": "..."
-  },
-  "system_prompt": "Complete, detailed system prompt for the collection agent...",
-  "tone": {
-    "style": "formal" | "friendly" | "empathetic" | "assertive",
-    "use_first_name": true | false,
-    "prohibited_words": [...],
-    "preferred_words": [...],
-    "opening_message_template": "..."
-  },
-  "negotiation_policies": {
-    "max_discount_full_payment_pct": 15,
-    "max_discount_installment_pct": 5,
-    "max_installments": 12,
-    "min_installment_value_brl": 50,
-    "discount_strategy": "only_when_resisted" | "proactive" | "escalating",
-    "payment_methods": ["pix", "boleto", "credit_card"],
-    "can_generate_payment_link": true
-  },
-  "guardrails": {
-    "never_do": [...],
-    "never_say": [...],
-    "escalation_triggers": [...],
-    "contact_hours": { "weekday": "08:00-20:00", "saturday": "08:00-14:00", "sunday": null },
-    "follow_up_interval_days": 3,
-    "max_attempts_before_stop": 10,
-    "must_identify_as_ai": true
-  },
-  "scenario_responses": {
-    "already_paid": "...",
-    "dont_recognize_debt": "...",
-    "cant_pay_now": "...",
-    "aggressive_debtor": "..."
-  },
-  "tools": [
-    "send_whatsapp_message",
-    "generate_pix_payment_link",
-    "generate_boleto",
-    "check_payment_status",
-    "escalate_to_human",
-    "schedule_follow_up"
-  ],
-  "metadata": {
-    "version": 1,
-    "generated_at": "2026-02-19T...",
-    "onboarding_session_id": "...",
-    "generation_model": "gpt-4.1-mini"
-  }
-}
-```
+Backend acessível via URL pública para o frontend chamar.
 
-**Requirements**:
-- Generation < 15 seconds
-- Output must pass schema validation
-- Sanity check: discount percentages within slider range, hours within legal limits (08-20 weekdays)
-- Store with versioning (user can adjust and re-generate)
-
-### FR-5: Simulation
-
-**Input**: AgentConfig JSON (from agent generation)
-
-**Processing**:
-- Single LLM call with a prompt that generates 2 complete simulated collection conversations
-- Scenario 1: Cooperative debtor (wants to pay, needs conditions)
-- Scenario 2: Resistant debtor (contests, demands big discount, needs convincing)
-- Each conversation: 8-15 messages back and forth
-- Conversations must reflect the specific agent config (tone, discounts, policies, guardrails)
-
-**Output**: SimulationResult JSON containing:
-
-```
-{
-  "scenarios": [
-    {
-      "id": 1,
-      "name": "Cooperative Debtor",
-      "description": "Debtor who wants to pay but needs payment conditions",
-      "conversation": [
-        { "role": "agent", "message": "..." },
-        { "role": "debtor", "message": "..." },
-        ...
-      ],
-      "outcome": "agreement_reached",
-      "discount_offered_pct": 10,
-      "payment_method": "pix",
-      "installments": 1,
-      "conversation_duration_minutes": 6
-    },
-    {
-      "id": 2,
-      "name": "Resistant Debtor",
-      ...
-    }
-  ],
-  "metadata": {
-    "generated_at": "...",
-    "model": "gpt-4.1-mini",
-    "agent_config_version": 1
-  }
-}
-```
-
-**Requirements**:
-- Generation < 20 seconds (single LLM call for both scenarios)
-- Conversations must feel realistic (not robotic)
-- Agent messages must follow the configured tone and policies
-- If agent config says max 10% discount, simulation shouldn't show 20%
-- Portuguese language
+| Requisito | Detalhes |
+|-----------|----------|
+| **CORS** | Permitir `portal.financecrew.ai` + `localhost` (dev) |
+| **Hosting** | Railway ou Render (Python + Playwright suportados) |
+| **Env vars** | `OPENAI_API_KEY`, `ALLOWED_ORIGINS` |
+| **Chromium** | Playwright Chromium instalado no container |
+| **Database** | SQLite para MVP (PostgreSQL quando escalar) |
 
 ---
 
-## 6. Non-Functional Requirements
+## 7. Non-Functional Requirements
 
 | Requirement | Target |
 |------------|--------|
-| **Runs locally** | macOS, no Docker required, minimal setup |
+| **Backend runs locally** | macOS, `uv run uvicorn` |
+| **Backend runs in cloud** | Railway/Render, URL pública |
+| **Frontend** | Lovable (React/TS), integrado com plataforma existente |
 | **Enrichment latency** | < 30 seconds |
 | **Agent generation latency** | < 15 seconds |
 | **Simulation generation latency** | < 20 seconds |
 | **Audio transcription latency** | < 5 seconds for 2-min audio |
-| **Data persistence** | SQLite (local), easily swappable to PostgreSQL |
+| **End-to-end onboarding time** | < 20 minutes |
+| **Data persistence** | SQLite (MVP), PostgreSQL (production) |
 | **API documentation** | Auto-generated OpenAPI/Swagger |
 | **Error handling** | Graceful degradation (enrichment partial, LLM fallback) |
-| **Language** | Code in English, agent output in Portuguese |
-
----
-
-## 7. Out of Scope Details
-
-| What | Why |
-|------|-----|
-| User registration/login | Platform already has auth. MVP tested via API directly |
-| Stripe/payment integration | Separate feature, built later by dev team |
-| Campaign creation/launch | Existing mechanism in platform |
-| WhatsApp message sending | Existing system, agent config plugs into it |
-| Frontend UI | Built separately with Lovable after backend validates |
-| Multi-tenant isolation | MVP is single-user validation |
-| Rate limiting | Not needed for local validation |
-| Logging/monitoring | Not needed for MVP |
-| Agent deployment to production | Dev team handles after validation |
+| **Language** | Code in English, all UI/agent output in Portuguese |
 
 ---
 
@@ -383,7 +289,10 @@ These values have sensible defaults based on Brazilian collection regulations an
 
 | # | Question | Impact | Decision |
 |---|----------|--------|----------|
-| 1 | Should the wizard questions be hardcoded or configurable? | Flexibility vs simplicity | Start hardcoded, make configurable later |
-| 2 | Should enrichment auto-detect the website from CNPJ? | UX convenience | Nice-to-have, not MVP |
-| 3 | Should the simulation allow re-generation with adjustments? | User satisfaction | Yes, but limit to 2 re-generations in MVP |
-| 4 | What LLM model for generation and simulation? | Cost vs quality | GPT-4.1-mini (good balance). Can test with 4o for quality comparison |
+| 1 | ~~Should wizard questions be hardcoded or configurable?~~ | ~~Flexibility~~ | **Decided**: Hardcoded for MVP. 12 core questions defined. |
+| 2 | ~~Should enrichment auto-detect website from CNPJ?~~ | ~~UX~~ | **Decided**: No. User provides website directly. |
+| 3 | ~~Should simulation allow re-generation?~~ | ~~Satisfaction~~ | **Decided**: Yes. POST again overwrites previous. |
+| 4 | ~~What LLM model?~~ | ~~Cost/quality~~ | **Decided**: GPT-4.1-mini for all calls. ~$0.10-0.30 per onboarding. |
+| 5 | Where to save AgentConfig permanently? | Integration | **Pending**: Backend onboarding stores it. Directus integration later. |
+| 6 | How does onboarding trigger in the platform? | UX | **Pending**: First login → redirect to onboarding. Discuss with team. |
+| 7 | Audio recording in browser — which API? | Frontend | **Pending**: MediaRecorder API or third-party. Lovable decision. |
