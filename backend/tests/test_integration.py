@@ -28,10 +28,23 @@ CORE_ANSWERS: dict[str, str] = {
         "e queremos reduzir para 3 com a automacao."
     ),
     "core_5": "amigavel_firme",
-    "core_6": "10",
-    "core_7": "12",
-    "core_8": "1_mes",
-    "core_9": "2",
+    "core_6": (
+        "Oferecemos ate 10% de desconto para pagamento a vista, mas apenas quando "
+        "o devedor demonstra resistencia. Nao oferecemos desconto proativamente. "
+        "Para parcelamento, o desconto maximo e de 5%."
+    ),
+    "core_7": (
+        "Parcelamos em ate 12 vezes, com parcela minima de R$50. "
+        "Acima de R$2.000, podemos estender para 18 parcelas mediante aprovacao."
+    ),
+    "core_8": (
+        "Cobramos juros de 1% ao mes sobre o valor total da divida, "
+        "calculados de forma simples a partir da data de vencimento."
+    ),
+    "core_9": (
+        "Cobramos multa de 2% sobre o valor da parcela vencida, "
+        "aplicada automaticamente apos o primeiro dia de atraso."
+    ),
     "core_10": "solicita_humano,divida_alta,agressivo",
     "core_11": (
         "O agente nunca deve ameacar o devedor com negativacao ou processo judicial. "
@@ -47,17 +60,6 @@ CORE_ANSWERS: dict[str, str] = {
         "'vou processar voces' (5%), e 'estou desempregado' (10%). Para cada caso "
         "temos um script especifico de tratamento."
     ),
-}
-
-SMART_DEFAULTS_BODY: dict = {
-    "follow_up_interval_days": 3,
-    "max_contact_attempts": 10,
-    "use_first_name": True,
-    "identify_as_ai": True,
-    "min_installment_value": 50.0,
-    "discount_strategy": "only_when_resisted",
-    "payment_link_generation": True,
-    "max_discount_installment_pct": 5.0,
 }
 
 
@@ -115,21 +117,21 @@ def _answer_dynamic_questions(
     session_id: str,
     initial_data: dict,
 ) -> dict:
-    """Answer dynamic questions in a loop until phase becomes 'defaults'."""
+    """Answer dynamic questions in a loop until phase becomes 'review'."""
     data = initial_data
     dynamic_count = 0
     max_safety = 20  # 8 dynamic * 2 follow-ups + margin
 
     while dynamic_count < max_safety:
         # Check phase transitions
-        if data.get("phase") == "defaults":
+        if data.get("phase") == "review":
             return data
         if data.get("next_question") is None:
             # No next question — check via GET
             resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
             assert resp.status_code == 200
             check = resp.json()
-            if check.get("phase") in ("defaults", "complete"):
+            if check.get("phase") in ("review", "complete"):
                 return check
             # The GET returned a question directly
             data = {"next_question": check}
@@ -137,7 +139,7 @@ def _answer_dynamic_questions(
         next_q = data.get("next_question")
         if next_q is None:
             break
-        if next_q.get("phase") in ("defaults", "complete"):
+        if next_q.get("phase") in ("review", "complete"):
             return data
 
         q_id = next_q["question_id"]
@@ -165,7 +167,7 @@ def _answer_dynamic_questions(
 
 
 def test_full_onboarding_flow(client: TestClient) -> None:
-    """End-to-end: session -> enrichment -> interview -> agent -> simulation."""
+    """End-to-end: session -> enrichment -> interview -> review -> agent -> simulation."""
 
     # ── Step 1: Create session ───────────────────────────────────────────
     resp = client.post(
@@ -223,23 +225,25 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     progress = resp.json()
     assert progress["core_answered"] == 12
 
-    # ── Step 6: Answer dynamic questions until defaults ──────────────────
+    # ── Step 6: Answer dynamic questions until review ────────────────────
     final_data = _answer_dynamic_questions(client, session_id, last_data)
 
-    # Verify we reached defaults phase
+    # Verify we reached review phase
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp.status_code == 200
     phase_check = resp.json()
-    assert phase_check["phase"] in ("defaults", "complete")
+    assert phase_check["phase"] in ("review", "complete")
 
-    # ── Step 7: Confirm smart defaults ───────────────────────────────────
-    resp = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    # ── Step 7: Review and confirm ───────────────────────────────────────
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/review")
     assert resp.status_code == 200
-    assert resp.json()["confirmed"] is False
+    review_data = resp.json()
+    assert isinstance(review_data["answers"], list)
+    assert len(review_data["answers"]) >= 12
 
     resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json=SMART_DEFAULTS_BODY,
+        f"/api/v1/sessions/{session_id}/interview/review",
+        json={"confirmed": True},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -264,6 +268,8 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     stored = resp.json()
     assert stored["agent_type"] in ("compliant", "non_compliant")
     assert len(stored["negotiation_policies"]["payment_methods"]) > 0
+    assert len(stored["negotiation_policies"]["discount_policy"]) > 0
+    assert len(stored["negotiation_policies"]["installment_policy"]) > 0
     assert len(stored["guardrails"]["never_do"]) > 0
     assert len(stored["guardrails"]["never_say"]) > 0
     assert len(stored["scenario_responses"]["already_paid"]) > 0
@@ -301,6 +307,5 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert session["status"] == "completed"
     assert session["enrichment_data"] is not None
     assert session["interview_responses"] is not None
-    assert session["smart_defaults"] is not None
     assert session["agent_config"] is not None
     assert session["simulation_result"] is not None

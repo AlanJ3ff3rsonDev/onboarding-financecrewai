@@ -11,7 +11,6 @@ from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
 from app.services.agent_generator import (
     _apply_dotted_path_adjustments,
     _apply_sanity_checks,
-    _extract_discount_limit,
     generate_agent_config,
 )
 
@@ -68,26 +67,26 @@ def _sample_interview_responses() -> list[dict]:
         },
         {
             "question_id": "core_6",
-            "question_text": "Desconto para pagamento integral?",
-            "answer": "10",
+            "question_text": "Vocês oferecem desconto para pagamento? Se sim, como funciona?",
+            "answer": "Oferecemos até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
             "source": "text",
         },
         {
             "question_id": "core_7",
-            "question_text": "Parcelamento máximo?",
-            "answer": "12",
+            "question_text": "Vocês oferecem parcelamento? Se sim, como funciona?",
+            "answer": "Parcelamos em até 12x, com parcela mínima de R$50",
             "source": "text",
         },
         {
             "question_id": "core_8",
-            "question_text": "Juros por atraso?",
-            "answer": "1_mes",
+            "question_text": "Vocês cobram juros por atraso? Se sim, como funciona o cálculo?",
+            "answer": "Juros de 1% ao mês sobre o valor total da dívida",
             "source": "text",
         },
         {
             "question_id": "core_9",
-            "question_text": "Multa por atraso?",
-            "answer": "2",
+            "question_text": "Vocês cobram multa por atraso? Se sim, como funciona?",
+            "answer": "Multa de 2% sobre o valor da parcela vencida",
             "source": "text",
         },
         {
@@ -123,25 +122,11 @@ def _sample_interview_responses() -> list[dict]:
     ]
 
 
-def _sample_smart_defaults() -> dict:
-    return {
-        "follow_up_interval_days": 3,
-        "max_contact_attempts": 10,
-        "use_first_name": True,
-        "identify_as_ai": True,
-        "min_installment_value": 50.0,
-        "discount_strategy": "only_when_resisted",
-        "payment_link_generation": True,
-        "max_discount_installment_pct": 5.0,
-    }
-
-
 def test_build_prompt():
     """build_prompt with complete data returns a substantial prompt string."""
     prompt = build_prompt(
         _sample_company_profile(),
         _sample_interview_responses(),
-        _sample_smart_defaults(),
     )
 
     assert isinstance(prompt, str)
@@ -153,20 +138,19 @@ def test_build_prompt():
 
 
 def test_prompt_includes_all_sections():
-    """Prompt includes all 8 required sections and key interview answers."""
+    """Prompt includes all required sections and key interview answers."""
     prompt = build_prompt(
         _sample_company_profile(),
         _sample_interview_responses(),
-        _sample_smart_defaults(),
     )
 
-    # All 8 section headings
+    # Section headings
     assert "Contexto da Empresa" in prompt
     assert "Modelo de Negócio" in prompt
     assert "Perfil do Devedor" in prompt
     assert "Processo de Cobrança" in prompt
     assert "Tom e Comunicação" in prompt
-    assert "Regras de Negociação" in prompt
+    assert "Políticas de Negociação" in prompt
     assert "Guardrails" in prompt
     assert "Cenários" in prompt
 
@@ -177,9 +161,9 @@ def test_prompt_includes_all_sections():
     assert "solicita_humano" in prompt  # core_10
     assert "já paguei" in prompt  # core_12
 
-    # Smart defaults present
-    assert "follow_up" in prompt.lower() or "follow-up" in prompt.lower()
-    assert "50.0" in prompt or "50,0" in prompt  # min_installment_value
+    # Financial policy answers (now text-based)
+    assert "10% de desconto" in prompt  # core_6 text answer
+    assert "12x" in prompt  # core_7 text answer
 
     # Follow-up answers included
     assert "10 pessoas na operação" in prompt  # followup_core_4_1
@@ -198,9 +182,9 @@ def test_prompt_includes_all_sections():
 
 
 def test_prompt_handles_missing_data():
-    """build_prompt works with None enrichment, empty responses, and None defaults."""
+    """build_prompt works with None enrichment and empty responses."""
     # Completely empty inputs
-    prompt = build_prompt(None, [], None)
+    prompt = build_prompt(None, [])
     assert isinstance(prompt, str)
     assert len(prompt) > 100
     assert "AgentConfig" in prompt
@@ -218,14 +202,11 @@ def test_prompt_handles_missing_data():
                 "source": "text",
             }
         ],
-        None,
     )
     assert "TestCorp" in prompt2
     assert "Roupas femininas" in prompt2
     # Other core answers should show as not answered
     assert "Não respondida" in prompt2
-    # Defaults should fall back to SmartDefaults() values
-    assert "3 dias" in prompt2  # follow_up_interval_days default
 
 
 # ---------------------------------------------------------------------------
@@ -267,11 +248,10 @@ def _valid_agent_config_dict() -> dict:
             ),
         },
         "negotiation_policies": {
-            "max_discount_full_payment_pct": 10.0,
-            "max_discount_installment_pct": 5.0,
-            "max_installments": 12,
-            "min_installment_value_brl": 50.0,
-            "discount_strategy": "only_when_resisted",
+            "discount_policy": "Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
+            "installment_policy": "Parcelamento em até 12x, parcela mínima de R$50",
+            "interest_policy": "Juros de 1% ao mês sobre o valor total",
+            "penalty_policy": "Multa de 2% sobre o valor da parcela vencida",
             "payment_methods": ["pix", "boleto", "cartao_credito"],
             "can_generate_payment_link": True,
         },
@@ -346,7 +326,6 @@ async def test_generate_agent_config():
         result = await generate_agent_config(
             _sample_company_profile(),
             _sample_interview_responses(),
-            _sample_smart_defaults(),
             session_id="sess-001",
         )
 
@@ -354,31 +333,9 @@ async def test_generate_agent_config():
     assert result.company_context.name == "CollectAI"
     assert len(result.system_prompt) >= 200
     assert result.tone.style == "friendly"
-    assert result.negotiation_policies.max_discount_full_payment_pct == 10.0
+    assert result.negotiation_policies.discount_policy == "Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste"
     assert result.metadata.onboarding_session_id == "sess-001"
     assert result.metadata.generation_model == "gpt-4.1-mini"
-
-
-@pytest.mark.asyncio
-async def test_sanity_check_discount_cap():
-    """LLM returns discount > interview limit → auto-capped."""
-    config_dict = _valid_agent_config_dict()
-    # LLM returns 50% but interview says max is 10%
-    config_dict["negotiation_policies"]["max_discount_full_payment_pct"] = 50.0
-    mock_response = _mock_openai_response(config_dict)
-
-    with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
-        instance = MockClient.return_value
-        instance.chat.completions.create = AsyncMock(return_value=mock_response)
-
-        result = await generate_agent_config(
-            _sample_company_profile(),
-            _sample_interview_responses(),  # core_6 answer = "10"
-            _sample_smart_defaults(),
-        )
-
-    # Should be capped to 10 (from interview answer)
-    assert result.negotiation_policies.max_discount_full_payment_pct == 10.0
 
 
 @pytest.mark.asyncio
@@ -396,7 +353,6 @@ async def test_sanity_check_system_prompt_quality():
             await generate_agent_config(
                 _sample_company_profile(),
                 _sample_interview_responses(),
-                _sample_smart_defaults(),
             )
 
 
@@ -415,7 +371,6 @@ async def test_generate_retries_on_failure():
         result = await generate_agent_config(
             _sample_company_profile(),
             _sample_interview_responses(),
-            _sample_smart_defaults(),
         )
 
     assert result.agent_type == "compliant"
@@ -435,7 +390,6 @@ async def test_generate_both_attempts_fail():
             await generate_agent_config(
                 _sample_company_profile(),
                 _sample_interview_responses(),
-                _sample_smart_defaults(),
             )
 
 
@@ -465,7 +419,6 @@ def _set_session_interviewed(client: TestClient, session_id: str) -> None:
     session.status = "interviewed"
     session.enrichment_data = _sample_company_profile()
     session.interview_responses = _sample_interview_responses()
-    session.smart_defaults = _sample_smart_defaults()
     session.interview_state = {"phase": "complete"}
     db.commit()
     db.close()
@@ -572,7 +525,6 @@ def _set_session_generated(client: TestClient, session_id: str) -> None:
     session.status = "generated"
     session.enrichment_data = _sample_company_profile()
     session.interview_responses = _sample_interview_responses()
-    session.smart_defaults = _sample_smart_defaults()
     session.interview_state = {"phase": "complete"}
     session.agent_config = _valid_agent_config_dict()
     db.commit()
@@ -588,12 +540,12 @@ def test_apply_dotted_path_valid() -> None:
         config,
         {
             "tone.style": "empathetic",
-            "negotiation_policies.max_discount_full_payment_pct": 20,
+            "negotiation_policies.discount_policy": "Até 20% para pagamento à vista",
         },
     )
 
     assert updated["tone"]["style"] == "empathetic"
-    assert updated["negotiation_policies"]["max_discount_full_payment_pct"] == 20
+    assert updated["negotiation_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
     # Original must not be mutated (deepcopy)
     assert config["tone"]["style"] == original_style
     assert len(summary) == 2
@@ -635,15 +587,15 @@ def test_adjust_tone(
 
 
 @patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
-def test_adjust_discount(
+def test_adjust_discount_policy(
     mock_adjust: AsyncMock,
     client: TestClient,
 ) -> None:
-    """PUT adjust with discount change → negotiation_policies updated."""
+    """PUT adjust with discount_policy change → negotiation_policies updated."""
     from app.models.schemas import AgentConfig
 
     adjusted = _valid_agent_config_dict()
-    adjusted["negotiation_policies"]["max_discount_full_payment_pct"] = 20.0
+    adjusted["negotiation_policies"]["discount_policy"] = "Até 20% para pagamento à vista"
     adjusted["metadata"]["version"] = 2
     mock_adjust.return_value = AgentConfig(**adjusted)
 
@@ -652,11 +604,11 @@ def test_adjust_discount(
 
     resp = client.put(
         f"/api/v1/sessions/{session_id}/agent/adjust",
-        json={"adjustments": {"negotiation_policies.max_discount_full_payment_pct": 20}},
+        json={"adjustments": {"negotiation_policies.discount_policy": "Até 20% para pagamento à vista"}},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["agent_config"]["negotiation_policies"]["max_discount_full_payment_pct"] == 20.0
+    assert data["agent_config"]["negotiation_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
 
 
 @patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)

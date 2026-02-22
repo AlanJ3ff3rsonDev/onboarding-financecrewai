@@ -47,6 +47,7 @@ Track important decisions made during development that deviate from or clarify t
 
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
+| 2026-02-22 | Refactored financial questions from select to open-ended text (core_6/7/8/9). Removed SmartDefaults entirely. Replaced NegotiationPolicies numeric fields with text descriptions. Replaced "defaults" interview phase with "review" phase. | Specific financial values (discount %, interest rate, penalty %, installment count) are campaign-level configuration, not onboarding-level. Onboarding captures the company's macro collection methodology. | 10 tests removed (SmartDefaults/numeric), 8 tests added (review/text-based). 120→116 total tests. All schemas, prompts, services, routers, and tests updated. |
 | 2026-02-20 | Removed contact hours from SmartDefaults and AgentConfig (contact_hours_weekday, contact_hours_saturday, contact_sunday, ContactHours schema) | In the final solution, messages are always available — timing is user-controlled, not agent-controlled. These fields would be unnecessary questions. | SmartDefaults: 11→8 fields. Guardrails: removed contact_hours. Removed _validate_contact_hours(). Removed test_defaults_validation_hours. 85→84 tests. |
 | 2026-02-19 | Expanded core questions from 10 to 12: added juros (core_8) and multa (core_9) | User feedback: not all businesses charge interest/fines — need explicit "none" option | All task refs updated (T09, T25). core_6 changed from slider to select. IDs renumbered: old 8/9/10 → 10/11/12 |
 | 2026-02-20 | T13 uses async helper functions instead of formal LangGraph nodes for dynamic question generation and completeness evaluation | Matches T12 pattern (follow-up evaluation). Adding async nodes to synchronous LangGraph graphs would require significant refactoring. Helpers achieve identical functionality. | Task DoD says "adds nodes" but `generate_dynamic_question()` and `evaluate_interview_completeness()` serve the same purpose as nodes would. |
@@ -64,6 +65,51 @@ Track bugs or problems that need attention but aren't blocking current work.
 ---
 
 ## Development Log
+
+### 2026-02-22 — Refactor: Financial Questions + SmartDefaults Removal
+
+**Status**: completed
+
+**What was done**:
+- **Financial questions (core_6/7/8/9)**: Changed from `select` with specific numeric options to `text` type with `context_hint` examples. Questions now ask "how does it work?" instead of "what percentage/number?"
+- **SmartDefaults removed entirely**: Class, constant, import, ORM column, endpoints (GET/POST /interview/defaults), and all references deleted
+- **NegotiationPolicies refactored**: Replaced numeric fields (max_discount_full_payment_pct, max_discount_installment_pct, max_installments, min_installment_value_brl, discount_strategy) with text-based descriptions (discount_policy, installment_policy, interest_policy, penalty_policy)
+- **Interview phase "defaults" → "review"**: All phase references updated across state machine, router, and tests
+- **Review endpoints added**: `GET /interview/review` returns answer summary + enrichment. `POST /interview/review` confirms with optional additional_notes stored as "review_notes" entry
+- **Agent generation**: Removed `smart_defaults` parameter, removed `_extract_discount_limit()`, removed numeric sanity checks for discounts/installments. Kept system_prompt quality check and guardrails bounds checks
+- **Simulation prompt**: Updated to reference text-based policy descriptions instead of numeric limits
+- **Guardrails**: Added defaults (follow_up_interval_days=3, max_attempts_before_stop=10, must_identify_as_ai=True) — populated by LLM during generation
+- **All 5 test files rewritten**: test_interview.py, test_agent_generator.py, test_agent_config.py, test_simulation.py, test_integration.py
+
+**Files modified** (13):
+- `app/models/schemas.py` — Removed SmartDefaults, refactored NegotiationPolicies, added InterviewReviewRequest
+- `app/models/orm.py` — Removed smart_defaults column
+- `app/prompts/interview.py` — core_6/7/8/9 to text, removed SMART_DEFAULTS
+- `app/prompts/agent_generator.py` — Removed smart_defaults from prompt, updated section labels
+- `app/prompts/simulation.py` — Text-based NegotiationPolicies in prompt
+- `app/services/interview_agent.py` — "defaults" → "review" phase
+- `app/services/agent_generator.py` — Removed _extract_discount_limit, numeric sanity checks, smart_defaults param
+- `app/routers/interview.py` — Removed defaults endpoints, added review endpoints
+- `app/routers/agent.py` — Removed smart_defaults from generate call
+- `tests/test_interview.py` — Rewrote financial/defaults/review tests
+- `tests/test_agent_generator.py` — Updated fixtures and assertions
+- `tests/test_agent_config.py` — Text-based NegotiationPolicies
+- `tests/test_simulation.py` — Text-based NegotiationPolicies
+- `tests/test_integration.py` — Text answers for core_6-9, review step replaces defaults
+
+**Tests**:
+- [x] Automated: 115/115 unit tests passing (0 failures)
+- [x] Tests removed: 10 (SmartDefaults, numeric discount cap, defaults endpoints)
+- [x] Tests added: 8 (review endpoints, text-based policies, open text questions)
+- [x] Net: 120 → 116 total (115 unit + 1 integration)
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Manual end-to-end test, then git commit & push
+
+---
 
 ### 2026-02-20 — T25: End-to-end integration test
 

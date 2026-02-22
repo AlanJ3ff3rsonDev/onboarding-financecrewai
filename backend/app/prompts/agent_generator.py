@@ -2,7 +2,7 @@
 
 import json
 
-from app.models.schemas import AgentConfig, SmartDefaults
+from app.models.schemas import AgentConfig
 
 _AGENT_CONFIG_SCHEMA = json.dumps(
     AgentConfig.model_json_schema(), indent=2, ensure_ascii=False
@@ -23,7 +23,9 @@ SYSTEM_PROMPT = (
     "- All text content in the AgentConfig (system_prompt, scenario_responses, "
     "opening_message_template, prohibited_words, preferred_words, never_do, never_say) "
     "must be in Portuguese.\n"
-    "- Respect the exact discount limits and installment limits provided — never exceed them.\n"
+    "- The negotiation_policies fields (discount_policy, installment_policy, interest_policy, "
+    "penalty_policy) are text descriptions of the company's methodology, not numeric limits. "
+    "Extract the policy descriptions from the interview answers.\n"
     "- The agent_type should be 'compliant' unless the interview explicitly indicates otherwise.\n"
     "- Generate realistic, actionable scenario responses based on the company's context.\n"
     "- The tools list should include tools appropriate for the company's payment methods "
@@ -41,7 +43,7 @@ ADJUSTMENT_SYSTEM_PROMPT = (
     "dont_recognize_debt, cant_pay_now, aggressive_debtor) — all in Brazilian Portuguese\n\n"
     "You will receive the FULL updated agent configuration. "
     "Regenerate system_prompt and scenario_responses to reflect ALL current settings "
-    "(especially tone, negotiation limits, guardrails, and company context). "
+    "(especially tone, negotiation policies, guardrails, and company context). "
     "Return ONLY a JSON object with exactly two keys: 'system_prompt' (string) and "
     "'scenario_responses' (object with the four scenario keys). "
     "Do NOT return the full AgentConfig — only those two fields."
@@ -133,50 +135,9 @@ def _build_company_section(company_profile: dict | None) -> str:
     return "\n".join(lines)
 
 
-def _build_defaults_section(smart_defaults: dict | None) -> str:
-    """Format smart defaults into labeled text."""
-    defaults = smart_defaults or SmartDefaults().model_dump()
-
-    strategy_labels = {
-        "only_when_resisted": "Só quando o devedor resistir",
-        "proactive": "Oferecer proativamente",
-        "escalating": "Escalar gradualmente",
-    }
-
-    lines = []
-    lines.append(
-        f"- Estratégia de desconto: "
-        f"{strategy_labels.get(defaults.get('discount_strategy', ''), defaults.get('discount_strategy', ''))}"
-    )
-    lines.append(
-        f"- Valor mínimo da parcela: R${defaults.get('min_installment_value', 50.0):.2f}"
-    )
-    lines.append(
-        f"- Desconto máximo em parcelamento: {defaults.get('max_discount_installment_pct', 5.0)}%"
-    )
-    lines.append(
-        f"- Geração de link de pagamento: "
-        f"{'Sim' if defaults.get('payment_link_generation', True) else 'Não'}"
-    )
-    lines.append(
-        f"- Intervalo entre follow-ups: {defaults.get('follow_up_interval_days', 3)} dias"
-    )
-    lines.append(
-        f"- Máximo de tentativas: {defaults.get('max_contact_attempts', 10)}"
-    )
-    lines.append(
-        f"- Usar primeiro nome: {'Sim' if defaults.get('use_first_name', True) else 'Não'}"
-    )
-    lines.append(
-        f"- Identificar-se como IA: {'Sim' if defaults.get('identify_as_ai', True) else 'Não'}"
-    )
-    return "\n".join(lines)
-
-
 def build_prompt(
     company_profile: dict | None,
     interview_responses: list[dict],
-    smart_defaults: dict | None,
 ) -> str:
     """Assemble all onboarding data into a structured prompt for AgentConfig generation.
 
@@ -184,7 +145,6 @@ def build_prompt(
         company_profile: CompanyProfile dict from enrichment (or None).
         interview_responses: List of answer dicts, each with question_id,
             question_text, answer, source.
-        smart_defaults: SmartDefaults dict confirmed by user (or None for defaults).
 
     Returns:
         The full user message to send to the LLM alongside SYSTEM_PROMPT.
@@ -252,31 +212,28 @@ def build_prompt(
     )
     sections.append("\n".join(s5_lines))
 
-    # Section 6: Negotiation Rules
-    s6_lines = ["## 6. Regras de Negociação"]
+    # Section 6: Negotiation Policies (text-based)
+    s6_lines = ["## 6. Políticas de Negociação"]
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_6",
-            "Desconto máximo para pagamento integral"
+            interview_responses, "core_6", "Política de desconto"
         )
     )
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_7", "Parcelamento máximo"
+            interview_responses, "core_7", "Política de parcelamento"
         )
     )
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_8", "Juros por atraso"
+            interview_responses, "core_8", "Política de juros"
         )
     )
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_9", "Multa por atraso"
+            interview_responses, "core_9", "Política de multa"
         )
     )
-    s6_lines.append("### Padrões confirmados pelo cliente")
-    s6_lines.append(_build_defaults_section(smart_defaults))
     sections.append("\n".join(s6_lines))
 
     # Section 7: Guardrails and Escalation
@@ -291,20 +248,6 @@ def build_prompt(
             interview_responses, "core_11",
             "O que nunca fazer/dizer"
         )
-    )
-    defaults = smart_defaults or SmartDefaults().model_dump()
-    s7_lines.append("### Padrões de operação")
-    s7_lines.append(
-        f"- Intervalo entre follow-ups: {defaults.get('follow_up_interval_days', 3)} dias"
-    )
-    s7_lines.append(
-        f"- Máximo de tentativas: {defaults.get('max_contact_attempts', 10)}"
-    )
-    s7_lines.append(
-        f"- Usar primeiro nome: {'Sim' if defaults.get('use_first_name', True) else 'Não'}"
-    )
-    s7_lines.append(
-        f"- Identificar-se como IA: {'Sim' if defaults.get('identify_as_ai', True) else 'Não'}"
     )
     sections.append("\n".join(s7_lines))
 
@@ -335,6 +278,14 @@ def build_prompt(
                 dyn_lines.append(f"  - (Aprofundamento) {fu_q}: {fu_a}")
         sections.append("\n".join(dyn_lines))
 
+    # Review notes (if user added any during review step)
+    review_notes = _get_answer_by_id(interview_responses, "review_notes")
+    if review_notes != "Não respondida":
+        sections.append(
+            "## Notas adicionais do cliente (revisão)\n"
+            f"{review_notes}"
+        )
+
     # Mapping hints
     sections.append(
         "## Dicas de Mapeamento\n"
@@ -343,12 +294,9 @@ def build_prompt(
         '"amigavel_firme" → "friendly", '
         '"empatico" → "empathetic", '
         '"direto_assertivo" → "assertive"\n'
-        '- core_6: "nenhum" → max_discount_full_payment_pct = 0, '
-        '"5" → 5, "10" → 10, "15" → 15, "20" → 20, "30" → 30, "50" → 50\n'
-        '- core_7: "nenhum" → max_installments = 0, '
-        '"2" → 2, "3" → 3, etc.\n'
-        '- core_8/core_9: "nenhum" → mencione no system_prompt que a empresa '
-        "não cobra juros/multa\n"
+        "- core_6/7/8/9: respostas abertas — extraia a política descrita pelo "
+        "cliente e preencha discount_policy, installment_policy, interest_policy, "
+        "penalty_policy como texto descritivo resumido\n"
         '- agent_type: use "compliant" por padrão\n'
         "- tools: inclua send_whatsapp_message, check_payment_status, "
         "escalate_to_human, schedule_follow_up como base. "

@@ -5,8 +5,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.models.schemas import InterviewQuestion, SmartDefaults
-from app.prompts.interview import CORE_QUESTIONS, DYNAMIC_QUESTION_BANK, SMART_DEFAULTS
+from app.models.schemas import InterviewQuestion
+from app.prompts.interview import CORE_QUESTIONS, DYNAMIC_QUESTION_BANK
 from app.services.interview_agent import (
     InterviewState,
     create_interview,
@@ -38,27 +38,15 @@ def test_core_questions_unique_ids():
     assert len(ids) == len(set(ids))
 
 
-def test_financial_questions_have_none_option():
-    """Discount, installments, interest, and penalty questions all have a 'none' option."""
+def test_financial_questions_are_open_text():
+    """Discount, installments, interest, and penalty questions are open text with context hints."""
     financial_ids = {"core_6", "core_7", "core_8", "core_9"}
     for q in CORE_QUESTIONS:
         if q.question_id in financial_ids:
-            assert isinstance(q.options, list), f"{q.question_id} should have list options"
-            values = [o.value for o in q.options]
-            assert "nenhum" in values, f"{q.question_id} missing 'nenhum' option"
-
-
-def test_smart_defaults_complete():
-    """All 8 defaults from PRD present with correct values."""
-    assert isinstance(SMART_DEFAULTS, SmartDefaults)
-    assert SMART_DEFAULTS.follow_up_interval_days == 3
-    assert SMART_DEFAULTS.max_contact_attempts == 10
-    assert SMART_DEFAULTS.use_first_name is True
-    assert SMART_DEFAULTS.identify_as_ai is True
-    assert SMART_DEFAULTS.min_installment_value == 50.0
-    assert SMART_DEFAULTS.discount_strategy == "only_when_resisted"
-    assert SMART_DEFAULTS.payment_link_generation is True
-    assert SMART_DEFAULTS.max_discount_installment_pct == 5.0
+            assert q.question_type == "text", f"{q.question_id} should be text type"
+            assert q.options is None, f"{q.question_id} should have no options"
+            assert q.context_hint is not None, f"{q.question_id} should have context_hint"
+            assert len(q.context_hint) > 0
 
 
 def test_dynamic_question_bank_categories():
@@ -908,13 +896,13 @@ async def test_dynamic_question_contextual():
 
 @pytest.mark.asyncio
 async def test_max_dynamic_reached():
-    """After 8 dynamic questions, transitions to 'defaults' without LLM call."""
+    """After 8 dynamic questions, transitions to 'review' without LLM call."""
     state = _dynamic_state(dynamic_questions_asked=8)
 
     question, new_state = await generate_dynamic_question(state)
 
     assert question is None
-    assert new_state["phase"] == "defaults"
+    assert new_state["phase"] == "review"
     assert new_state["current_question"] is None
 
 
@@ -938,7 +926,7 @@ async def test_early_completion():
             is_complete, new_state = await evaluate_interview_completeness(state)
 
     assert is_complete is True
-    assert new_state["phase"] == "defaults"
+    assert new_state["phase"] == "review"
     assert new_state["current_question"] is None
 
 
@@ -1137,8 +1125,8 @@ def test_progress_during_follow_up(client: TestClient) -> None:
     assert data["total_answered"] == 1
 
 
-def test_progress_defaults_phase(client: TestClient) -> None:
-    """When phase='defaults', is_complete=True and session status → 'interviewed'."""
+def test_progress_review_phase(client: TestClient) -> None:
+    """When phase='review', is_complete=True and session status → 'interviewed'."""
     from app.database import get_db
     from app.main import app
     from app.models.orm import OnboardingSession
@@ -1150,7 +1138,7 @@ def test_progress_defaults_phase(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Manually set interview_state to defaults phase
+    # Manually set interview_state to review phase
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     state = {
@@ -1164,7 +1152,7 @@ def test_progress_defaults_phase(client: TestClient) -> None:
         ],
         "dynamic_questions_asked": 5,
         "max_dynamic_questions": 8,
-        "phase": "defaults",
+        "phase": "review",
         "needs_follow_up": False,
         "follow_up_question": None,
         "follow_up_count": 0,
@@ -1177,7 +1165,7 @@ def test_progress_defaults_phase(client: TestClient) -> None:
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["phase"] == "defaults"
+    assert data["phase"] == "review"
     assert data["core_answered"] == 12
     assert data["dynamic_answered"] == 5
     assert data["total_answered"] == 12
@@ -1195,11 +1183,11 @@ def test_progress_session_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-# ---------- T15: Smart defaults confirmation endpoint ----------
+# ---------- Review endpoints (replaced SmartDefaults) ----------
 
 
-def _session_in_defaults_phase(client: TestClient) -> str:
-    """Helper: create a session with interview_state in 'defaults' phase. Returns session_id."""
+def _session_in_review_phase(client: TestClient) -> str:
+    """Helper: create a session with interview_state in 'review' phase. Returns session_id."""
     from app.database import get_db
     from app.main import app
     from app.models.orm import OnboardingSession
@@ -1224,141 +1212,78 @@ def _session_in_defaults_phase(client: TestClient) -> str:
         ],
         "dynamic_questions_asked": 5,
         "max_dynamic_questions": 8,
-        "phase": "defaults",
+        "phase": "review",
         "needs_follow_up": False,
         "follow_up_question": None,
         "follow_up_count": 0,
     }
     session.interview_state = serialize_state(state)
+    session.interview_responses = [
+        {"question_id": f"core_{i}", "answer": f"Resp {i}", "source": "text"}
+        for i in range(1, 13)
+    ]
     session.status = "interviewing"
     db.commit()
     db.close()
     return session_id
 
 
-def test_get_defaults(client: TestClient) -> None:
-    """Session in defaults phase → GET returns all 11 default values."""
-    session_id = _session_in_defaults_phase(client)
+def test_get_review(client: TestClient) -> None:
+    """Session in review phase → GET /interview/review returns answers summary."""
+    session_id = _session_in_review_phase(client)
 
-    resp = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    resp = client.get(f"/api/v1/sessions/{session_id}/interview/review")
     assert resp.status_code == 200
     data = resp.json()
     assert data["confirmed"] is False
-    defaults = data["defaults"]
-    assert defaults["follow_up_interval_days"] == 3
-    assert defaults["max_contact_attempts"] == 10
-    assert defaults["use_first_name"] is True
-    assert defaults["identify_as_ai"] is True
-    assert defaults["min_installment_value"] == 50.0
-    assert defaults["discount_strategy"] == "only_when_resisted"
-    assert defaults["payment_link_generation"] is True
-    assert defaults["max_discount_installment_pct"] == 5.0
+    assert len(data["answers"]) == 12
+    assert isinstance(data["enrichment"], dict)
 
 
-def test_get_defaults_not_started(client: TestClient) -> None:
-    """No interview_state → GET defaults returns 400."""
+def test_confirm_review(client: TestClient) -> None:
+    """POST /interview/review with confirmation → phase=complete, status=interviewed."""
+    session_id = _session_in_review_phase(client)
+
     resp = client.post(
-        "/api/v1/sessions",
-        json={"company_name": "TestCorp", "website": "https://test.com"},
-    )
-    session_id = resp.json()["session_id"]
-
-    resp = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
-    assert resp.status_code == 400
-    assert "not started" in resp.json()["detail"].lower()
-
-
-def test_confirm_defaults(client: TestClient) -> None:
-    """POST with default values → stored in DB, phase → 'complete'."""
-    session_id = _session_in_defaults_phase(client)
-
-    defaults_body = {
-        "follow_up_interval_days": 3,
-        "max_contact_attempts": 10,
-        "use_first_name": True,
-        "identify_as_ai": True,
-        "min_installment_value": 50.0,
-        "discount_strategy": "only_when_resisted",
-        "payment_link_generation": True,
-        "max_discount_installment_pct": 5.0,
-    }
-    resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json=defaults_body,
+        f"/api/v1/sessions/{session_id}/interview/review",
+        json={"confirmed": True},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["confirmed"] is True
     assert data["phase"] == "complete"
-    assert data["defaults"]["follow_up_interval_days"] == 3
 
-    # Verify stored in DB via GET
-    resp2 = client.get(f"/api/v1/sessions/{session_id}/interview/defaults")
+    # Verify stored in DB: confirmed
+    resp2 = client.get(f"/api/v1/sessions/{session_id}/interview/review")
     assert resp2.status_code == 200
     assert resp2.json()["confirmed"] is True
-    assert resp2.json()["defaults"]["follow_up_interval_days"] == 3
 
     # Verify session status
     session_resp = client.get(f"/api/v1/sessions/{session_id}")
     assert session_resp.json()["status"] == "interviewed"
 
 
-def test_adjust_defaults(client: TestClient) -> None:
-    """POST with modified values → new values stored."""
-    session_id = _session_in_defaults_phase(client)
+def test_confirm_review_with_notes(client: TestClient) -> None:
+    """POST /interview/review with additional_notes → notes stored as review_notes entry."""
+    session_id = _session_in_review_phase(client)
 
-    adjusted = {
-        "follow_up_interval_days": 5,
-        "max_contact_attempts": 15,
-        "use_first_name": False,
-        "identify_as_ai": True,
-        "min_installment_value": 100.0,
-        "discount_strategy": "proactive",
-        "payment_link_generation": False,
-        "max_discount_installment_pct": 10.0,
-    }
     resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json=adjusted,
+        f"/api/v1/sessions/{session_id}/interview/review",
+        json={"confirmed": True, "additional_notes": "Também aceitamos cheque."},
     )
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["confirmed"] is True
-    assert data["defaults"]["follow_up_interval_days"] == 5
-    assert data["defaults"]["max_contact_attempts"] == 15
-    assert data["defaults"]["discount_strategy"] == "proactive"
-    assert data["defaults"]["min_installment_value"] == 100.0
-    assert data["defaults"]["use_first_name"] is False
+    assert resp.json()["confirmed"] is True
+
+    # Verify notes stored in interview_responses
+    session_resp = client.get(f"/api/v1/sessions/{session_id}")
+    responses = session_resp.json()["interview_responses"]
+    review_notes = [r for r in responses if r["question_id"] == "review_notes"]
+    assert len(review_notes) == 1
+    assert review_notes[0]["answer"] == "Também aceitamos cheque."
 
 
-def test_defaults_validation_pydantic(client: TestClient) -> None:
-    """POST with invalid Pydantic values (negative installment, bad strategy) → 422."""
-    session_id = _session_in_defaults_phase(client)
-
-    # Negative min_installment_value
-    resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"min_installment_value": -10.0},
-    )
-    assert resp.status_code == 422
-
-    # Invalid discount_strategy
-    resp2 = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"discount_strategy": "invalid_strategy"},
-    )
-    assert resp2.status_code == 422
-
-    # max_discount_installment_pct > 50
-    resp3 = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={"max_discount_installment_pct": 60.0},
-    )
-    assert resp3.status_code == 422
-
-
-def test_confirm_defaults_wrong_phase(client: TestClient) -> None:
-    """POST when phase='core' → 400."""
+def test_review_wrong_phase(client: TestClient) -> None:
+    """POST /interview/review when phase='core' → 400."""
     from app.database import get_db
     from app.main import app
     from app.models.orm import OnboardingSession
@@ -1400,20 +1325,20 @@ def test_confirm_defaults_wrong_phase(client: TestClient) -> None:
     db.close()
 
     resp = client.post(
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json={},
+        f"/api/v1/sessions/{session_id}/interview/review",
+        json={"confirmed": True},
     )
     assert resp.status_code == 400
     assert "não concluída" in resp.json()["detail"].lower()
 
 
-def test_defaults_session_not_found(client: TestClient) -> None:
+def test_review_session_not_found(client: TestClient) -> None:
     """GET/POST on nonexistent session → 404."""
-    resp = client.get("/api/v1/sessions/nonexistent-id/interview/defaults")
+    resp = client.get("/api/v1/sessions/nonexistent-id/interview/review")
     assert resp.status_code == 404
 
     resp2 = client.post(
-        "/api/v1/sessions/nonexistent-id/interview/defaults",
-        json={},
+        "/api/v1/sessions/nonexistent-id/interview/review",
+        json={"confirmed": True},
     )
     assert resp2.status_code == 404

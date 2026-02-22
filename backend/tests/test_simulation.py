@@ -55,11 +55,10 @@ def _valid_agent_config() -> AgentConfig:
             ),
         ),
         negotiation_policies=NegotiationPolicies(
-            max_discount_full_payment_pct=10.0,
-            max_discount_installment_pct=5.0,
-            max_installments=12,
-            min_installment_value_brl=50.0,
-            discount_strategy="only_when_resisted",
+            discount_policy="Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
+            installment_policy="Parcelamento em até 12x, parcela mínima de R$50",
+            interest_policy="Juros de 1% ao mês sobre o valor total",
+            penalty_policy="Multa de 2% sobre o valor da parcela vencida",
             payment_methods=["pix", "boleto"],
             can_generate_payment_link=True,
         ),
@@ -150,14 +149,14 @@ def _mock_simulation_response() -> dict:
 
 
 def test_build_simulation_prompt():
-    """Prompt should include company name, tone, discount limits, guardrails, and schema."""
+    """Prompt should include company name, tone, policy descriptions, guardrails, and schema."""
     config = _valid_agent_config()
     prompt = build_simulation_prompt(config)
 
     assert "CollectAI" in prompt
     assert "empathetic" in prompt
-    assert "10.0%" in prompt  # max_discount_full_payment_pct
-    assert "5.0%" in prompt  # max_discount_installment_pct
+    assert "Até 10% de desconto" in prompt  # discount_policy text
+    assert "Parcelamento em até 12x" in prompt  # installment_policy text
     assert "Ameaçar o devedor" in prompt  # never_do
     assert "SPC" in prompt  # never_say
     assert "SimulationResult" in prompt  # JSON schema reference

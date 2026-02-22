@@ -33,7 +33,6 @@ async def generate_agent(
         config = await generate_agent_config(
             company_profile=session.enrichment_data,
             interview_responses=session.interview_responses or [],
-            smart_defaults=session.smart_defaults,
             session_id=session_id,
         )
     except ValueError as exc:

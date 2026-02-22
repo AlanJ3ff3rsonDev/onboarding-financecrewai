@@ -1,6 +1,6 @@
-"""Core questions, dynamic question bank, and smart defaults for the interview."""
+"""Core questions and dynamic question bank for the interview."""
 
-from app.models.schemas import InterviewQuestion, QuestionOption, SmartDefaults
+from app.models.schemas import InterviewQuestion, QuestionOption
 
 CORE_QUESTIONS: list[InterviewQuestion] = [
     InterviewQuestion(
@@ -60,62 +60,31 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
     ),
     InterviewQuestion(
         question_id="core_6",
-        question_text="Vocês oferecem desconto para pagamento integral imediato? Se sim, qual o máximo?",
-        question_type="select",
-        options=[
-            QuestionOption(value="nenhum", label="Não oferecemos desconto"),
-            QuestionOption(value="5", label="Até 5%"),
-            QuestionOption(value="10", label="Até 10%"),
-            QuestionOption(value="15", label="Até 15%"),
-            QuestionOption(value="20", label="Até 20%"),
-            QuestionOption(value="30", label="Até 30%"),
-            QuestionOption(value="50", label="Até 50%"),
-            QuestionOption(value="outro", label="Outro (especifique)"),
-        ],
+        question_text="Vocês oferecem desconto para pagamento? Se sim, como funciona?",
+        question_type="text",
         phase="core",
+        context_hint="Exemplos: 'oferecemos até 10% para pagamento à vista', 'só oferecemos desconto quando o devedor resiste', 'não oferecemos desconto'.",
     ),
     InterviewQuestion(
         question_id="core_7",
-        question_text="Vocês oferecem parcelamento? Se sim, qual o número máximo de parcelas?",
-        question_type="select",
-        options=[
-            QuestionOption(value="nenhum", label="Não oferecemos parcelamento"),
-            QuestionOption(value="2", label="2x"),
-            QuestionOption(value="3", label="3x"),
-            QuestionOption(value="4", label="4x"),
-            QuestionOption(value="6", label="6x"),
-            QuestionOption(value="10", label="10x"),
-            QuestionOption(value="12", label="12x"),
-            QuestionOption(value="18", label="18x"),
-            QuestionOption(value="24", label="24x"),
-        ],
+        question_text="Vocês oferecem parcelamento? Se sim, como funciona?",
+        question_type="text",
         phase="core",
+        context_hint="Exemplos: 'parcelamos em até 12x', 'parcela mínima de R$50', 'não oferecemos parcelamento'.",
     ),
     InterviewQuestion(
         question_id="core_8",
-        question_text="Vocês cobram juros por atraso? Se sim, qual a taxa?",
-        question_type="select",
-        options=[
-            QuestionOption(value="nenhum", label="Não cobramos juros"),
-            QuestionOption(value="1_mes", label="1% ao mês"),
-            QuestionOption(value="2_mes", label="2% ao mês"),
-            QuestionOption(value="3_mes", label="3% ao mês"),
-            QuestionOption(value="outro", label="Outro (especifique)"),
-        ],
+        question_text="Vocês cobram juros por atraso? Se sim, como funciona o cálculo?",
+        question_type="text",
         phase="core",
+        context_hint="Exemplos: 'juros de 1% ao mês sobre o valor total', 'juros compostos', 'não cobramos juros'.",
     ),
     InterviewQuestion(
         question_id="core_9",
-        question_text="Vocês cobram multa por atraso? Se sim, qual o percentual?",
-        question_type="select",
-        options=[
-            QuestionOption(value="nenhum", label="Não cobramos multa"),
-            QuestionOption(value="2", label="2%"),
-            QuestionOption(value="5", label="5%"),
-            QuestionOption(value="10", label="10%"),
-            QuestionOption(value="outro", label="Outro (especifique)"),
-        ],
+        question_text="Vocês cobram multa por atraso? Se sim, como funciona?",
+        question_type="text",
         phase="core",
+        context_hint="Exemplos: 'multa de 2% sobre o valor da parcela', 'multa fixa de R$10', 'não cobramos multa'.",
     ),
     InterviewQuestion(
         question_id="core_10",
@@ -159,9 +128,9 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
         "Qual o perfil típico dos seus devedores inadimplentes?",
     ],
     "negotiation_depth": [
-        "Descontos devem ser oferecidos proativamente ou só quando o devedor resiste?",
-        "Desconto máximo para parcelamento?",
-        "Existem regras diferentes de desconto por faixa de valor da dívida?",
+        "Como funciona a negociação na prática — o agente propõe condições ou espera o devedor pedir?",
+        "Existem regras diferentes de negociação por faixa de valor ou tempo de atraso da dívida?",
+        "Qual a abordagem quando o devedor pede condições fora do padrão?",
     ],
     "scenario_handling": [
         "Como o agente deve lidar quando o devedor diz 'já paguei'?",
@@ -186,8 +155,6 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
         "Como seria o cenário ideal de cobrança para você?",
     ],
 }
-
-SMART_DEFAULTS = SmartDefaults()
 
 FOLLOW_UP_EVALUATION_PROMPT = """\
 Você é um especialista em onboarding de agentes de cobrança. Está avaliando se a resposta \

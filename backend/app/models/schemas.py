@@ -37,19 +37,13 @@ class InterviewQuestion(BaseModel):
     pre_filled_value: str | None = None
     is_required: bool = True
     supports_audio: bool = True
-    phase: Literal["core", "dynamic", "follow_up", "defaults"]
+    phase: Literal["core", "dynamic", "follow_up", "review"]
     context_hint: str | None = None
 
 
-class SmartDefaults(BaseModel):
-    follow_up_interval_days: int = Field(default=3, ge=1)
-    max_contact_attempts: int = Field(default=10, ge=1)
-    use_first_name: bool = True
-    identify_as_ai: bool = True
-    min_installment_value: float = Field(default=50.0, ge=0)
-    discount_strategy: Literal["only_when_resisted", "proactive", "escalating"] = "only_when_resisted"
-    payment_link_generation: bool = True
-    max_discount_installment_pct: float = Field(default=5.0, ge=0, le=50)
+class InterviewReviewRequest(BaseModel):
+    confirmed: bool = True
+    additional_notes: str | None = None
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -88,7 +82,6 @@ class SessionResponse(BaseModel):
     enrichment_data: dict[str, Any] | None = None
     interview_state: dict[str, Any] | None = None
     interview_responses: list[Any] | None = None
-    smart_defaults: dict[str, Any] | None = None
     agent_config: dict[str, Any] | None = None
     simulation_result: dict[str, Any] | None = None
     created_at: datetime
@@ -121,11 +114,10 @@ class ToneConfig(BaseModel):
 
 
 class NegotiationPolicies(BaseModel):
-    max_discount_full_payment_pct: float = Field(..., ge=0, le=100)
-    max_discount_installment_pct: float = Field(..., ge=0, le=50)
-    max_installments: int = Field(..., ge=0, le=48)
-    min_installment_value_brl: float = Field(..., ge=0)
-    discount_strategy: Literal["only_when_resisted", "proactive", "escalating"]
+    discount_policy: str
+    installment_policy: str
+    interest_policy: str
+    penalty_policy: str
     payment_methods: list[str]
     can_generate_payment_link: bool
 
@@ -134,9 +126,9 @@ class Guardrails(BaseModel):
     never_do: list[str]
     never_say: list[str]
     escalation_triggers: list[str]
-    follow_up_interval_days: int = Field(..., ge=1)
-    max_attempts_before_stop: int = Field(..., ge=1)
-    must_identify_as_ai: bool
+    follow_up_interval_days: int = Field(default=3, ge=1)
+    max_attempts_before_stop: int = Field(default=10, ge=1)
+    must_identify_as_ai: bool = True
 
 
 class ScenarioResponses(BaseModel):
@@ -202,6 +194,6 @@ class AgentAdjustRequest(BaseModel):
         description=(
             "Flat dict of dotted-path keys to new values. "
             "Example: {'tone.style': 'empathetic', "
-            "'negotiation_policies.max_discount_full_payment_pct': 20}"
+            "'negotiation_policies.discount_policy': 'Até 20% para pagamento à vista'}"
         ),
     )

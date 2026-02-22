@@ -3,7 +3,6 @@
 import copy
 import json
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,27 +20,12 @@ from app.prompts.agent_generator import (
 logger = logging.getLogger(__name__)
 
 
-def _extract_discount_limit(interview_responses: list[dict]) -> float | None:
-    """Extract the max discount from core_6 answer. Returns None if not found."""
-    for r in interview_responses:
-        if r.get("question_id") == "core_6":
-            answer = r.get("answer", "")
-            if answer == "nenhum":
-                return 0.0
-            match = re.search(r"(\d+)", str(answer))
-            if match:
-                return float(match.group(1))
-    return None
-
-
 def _apply_sanity_checks(
     data: dict,
     interview_responses: list[dict],
-    smart_defaults: dict | None,
 ) -> list[str]:
     """Validate and auto-correct LLM output. Returns list of corrections made."""
     corrections: list[str] = []
-    defaults = smart_defaults or {}
 
     # --- System prompt quality ---
     system_prompt = data.get("system_prompt", "")
@@ -59,54 +43,6 @@ def _apply_sanity_checks(
         logger.warning(
             "system_prompt não menciona o nome da empresa '%s'", company_name
         )
-
-    # --- Discount caps ---
-    neg = data.get("negotiation_policies", {})
-    if isinstance(neg, dict):
-        # Cap full-payment discount to interview answer
-        interview_limit = _extract_discount_limit(interview_responses)
-        if interview_limit is not None:
-            current = neg.get("max_discount_full_payment_pct", 0)
-            if current > interview_limit:
-                corrections.append(
-                    f"max_discount_full_payment_pct: {current} → {interview_limit} "
-                    f"(limitado pela resposta da entrevista)"
-                )
-                neg["max_discount_full_payment_pct"] = interview_limit
-
-        # Cap installment discount to smart_defaults if provided
-        defaults_inst_pct = defaults.get("max_discount_installment_pct")
-        if defaults_inst_pct is not None:
-            current_inst = neg.get("max_discount_installment_pct", 0)
-            if current_inst > defaults_inst_pct:
-                corrections.append(
-                    f"max_discount_installment_pct: {current_inst} → {defaults_inst_pct} "
-                    f"(limitado pelos padrões confirmados)"
-                )
-                neg["max_discount_installment_pct"] = defaults_inst_pct
-
-        # Clamp ranges for Pydantic validation safety
-        if neg.get("max_discount_full_payment_pct", 0) > 100:
-            neg["max_discount_full_payment_pct"] = 100
-            corrections.append("max_discount_full_payment_pct capped to 100")
-        if neg.get("max_discount_full_payment_pct", 0) < 0:
-            neg["max_discount_full_payment_pct"] = 0
-            corrections.append("max_discount_full_payment_pct floored to 0")
-
-        if neg.get("max_discount_installment_pct", 0) > 50:
-            neg["max_discount_installment_pct"] = 50
-            corrections.append("max_discount_installment_pct capped to 50")
-        if neg.get("max_discount_installment_pct", 0) < 0:
-            neg["max_discount_installment_pct"] = 0
-            corrections.append("max_discount_installment_pct floored to 0")
-
-        max_inst = neg.get("max_installments", 0)
-        if max_inst > 48:
-            neg["max_installments"] = 48
-            corrections.append(f"max_installments: {max_inst} → 48")
-        elif max_inst < 0:
-            neg["max_installments"] = 0
-            corrections.append(f"max_installments: {max_inst} → 0")
 
     # --- Guardrails bounds ---
     guard = data.get("guardrails", {})
@@ -136,7 +72,6 @@ def _apply_sanity_checks(
 async def generate_agent_config(
     company_profile: dict | None,
     interview_responses: list[dict],
-    smart_defaults: dict | None,
     session_id: str = "",
 ) -> AgentConfig:
     """Generate a complete AgentConfig by calling GPT-4.1-mini.
@@ -144,7 +79,6 @@ async def generate_agent_config(
     Args:
         company_profile: CompanyProfile dict from enrichment (or None).
         interview_responses: List of answer dicts from the interview.
-        smart_defaults: SmartDefaults dict confirmed by user (or None).
         session_id: Onboarding session ID for metadata.
 
     Returns:
@@ -154,7 +88,7 @@ async def generate_agent_config(
         ValueError: If LLM fails after 2 attempts or output fails sanity checks.
     """
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    user_message = build_prompt(company_profile, interview_responses, smart_defaults)
+    user_message = build_prompt(company_profile, interview_responses)
 
     for attempt in range(2):
         try:
@@ -177,9 +111,7 @@ async def generate_agent_config(
             data["metadata"]["generation_model"] = "gpt-4.1-mini"
 
             # Sanity checks (may raise ValueError for fatal issues)
-            corrections = _apply_sanity_checks(
-                data, interview_responses, smart_defaults
-            )
+            corrections = _apply_sanity_checks(data, interview_responses)
             if corrections:
                 logger.info(
                     "Applied %d sanity corrections to agent config", len(corrections)

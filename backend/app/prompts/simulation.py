@@ -18,10 +18,10 @@ SYSTEM_PROMPT = (
     "Short conversations with fewer than 10 messages are NOT acceptable. "
     "Build a realistic back-and-forth: the debtor asks questions, raises objections, "
     "the agent responds, proposes solutions, and the conversation evolves naturally.\n"
-    "- The agent MUST strictly follow the configured tone, discount limits, guardrails, "
+    "- The agent MUST strictly follow the configured tone, guardrails, "
     "and scenario response templates.\n"
-    "- The agent must NEVER offer discounts above the configured max_discount_full_payment_pct "
-    "or max_discount_installment_pct.\n"
+    "- The agent must follow the negotiation policies described in its configuration "
+    "(discount, installment, interest, penalty policies).\n"
     "- The agent must NEVER say or do anything listed in never_say or never_do.\n"
     "- If must_identify_as_ai is true, the agent must identify as AI in the conversation.\n"
     "- All conversation content must be in natural Brazilian Portuguese.\n"
@@ -80,21 +80,15 @@ def build_simulation_prompt(agent_config: AgentConfig) -> str:
         f"- Template de abertura: {tone.opening_message_template}"
     )
 
-    # Section 4: Negotiation Policies
+    # Section 4: Negotiation Policies (text-based)
     neg = agent_config.negotiation_policies
     methods = ", ".join(neg.payment_methods) if neg.payment_methods else "Nenhum"
-    strategy_labels = {
-        "only_when_resisted": "Só quando o devedor resistir",
-        "proactive": "Oferecer proativamente",
-        "escalating": "Escalar gradualmente",
-    }
     sections.append(
         "## Políticas de Negociação\n"
-        f"- Desconto máximo (pagamento integral): {neg.max_discount_full_payment_pct}%\n"
-        f"- Desconto máximo (parcelamento): {neg.max_discount_installment_pct}%\n"
-        f"- Máximo de parcelas: {neg.max_installments}\n"
-        f"- Valor mínimo da parcela: R${neg.min_installment_value_brl:.2f}\n"
-        f"- Estratégia de desconto: {strategy_labels.get(neg.discount_strategy, neg.discount_strategy)}\n"
+        f"- Política de desconto: {neg.discount_policy}\n"
+        f"- Política de parcelamento: {neg.installment_policy}\n"
+        f"- Política de juros: {neg.interest_policy}\n"
+        f"- Política de multa: {neg.penalty_policy}\n"
         f"- Métodos de pagamento: {methods}\n"
         f"- Pode gerar link de pagamento: {'Sim' if neg.can_generate_payment_link else 'Não'}"
     )
@@ -129,7 +123,7 @@ def build_simulation_prompt(agent_config: AgentConfig) -> str:
         "- O devedor quer pagar, mas precisa de condições (desconto ou parcelamento)\n"
         "- O agente se apresenta, explica o motivo do contato, e inicia negociação\n"
         "- O devedor faz perguntas sobre valores, prazos e formas de pagamento\n"
-        "- O agente negocia dentro dos limites configurados, propondo opções\n"
+        "- O agente negocia seguindo as políticas configuradas, propondo opções\n"
         "- O devedor considera, talvez peça outra opção, e aceita uma proposta\n"
         "- O agente confirma o acordo e gera o link de pagamento\n"
         "- Resolução esperada: 'full_payment' ou 'installment_plan'\n"

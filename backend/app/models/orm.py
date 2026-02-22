@@ -26,7 +26,6 @@ class OnboardingSession(Base):
     enrichment_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     interview_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     interview_responses: Mapped[list | None] = mapped_column(JSON, nullable=True)
-    smart_defaults: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     agent_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     simulation_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -45,11 +45,10 @@ def _valid_agent_config() -> AgentConfig:
             ),
         ),
         negotiation_policies=NegotiationPolicies(
-            max_discount_full_payment_pct=15.0,
-            max_discount_installment_pct=5.0,
-            max_installments=12,
-            min_installment_value_brl=50.0,
-            discount_strategy="only_when_resisted",
+            discount_policy="Até 15% de desconto para pagamento à vista, apenas quando o devedor resiste",
+            installment_policy="Parcelamento em até 12x, parcela mínima de R$50",
+            interest_policy="Juros de 1% ao mês sobre o valor total",
+            penalty_policy="Multa de 2% sobre o valor da parcela vencida",
             payment_methods=["pix", "boleto"],
             can_generate_payment_link=True,
         ),
@@ -98,38 +97,26 @@ def test_agent_config_valid():
     assert config.agent_type == "compliant"
     assert config.company_context.name == "CollectAI"
     assert config.tone.style == "empathetic"
-    assert config.negotiation_policies.max_discount_full_payment_pct == 15.0
+    assert config.negotiation_policies.discount_policy.startswith("Até 15%")
     assert config.guardrails.follow_up_interval_days == 3
     assert config.scenario_responses.already_paid.startswith("Peço desculpas")
     assert len(config.tools) == 6
     assert config.metadata.version == 1
 
 
-def test_agent_config_invalid_discount():
-    """Discount > 100% on full payment should raise a ValidationError."""
-    with pytest.raises(ValidationError) as exc_info:
-        NegotiationPolicies(
-            max_discount_full_payment_pct=150.0,
-            max_discount_installment_pct=5.0,
-            max_installments=12,
-            min_installment_value_brl=50.0,
-            discount_strategy="proactive",
-            payment_methods=["pix"],
-            can_generate_payment_link=True,
-        )
-    assert "less than or equal to 100" in str(exc_info.value)
-
-    # Also test installment discount > 50%
-    with pytest.raises(ValidationError):
-        NegotiationPolicies(
-            max_discount_full_payment_pct=10.0,
-            max_discount_installment_pct=60.0,
-            max_installments=12,
-            min_installment_value_brl=50.0,
-            discount_strategy="proactive",
-            payment_methods=["pix"],
-            can_generate_payment_link=True,
-        )
+def test_agent_config_negotiation_policies_text_based():
+    """NegotiationPolicies accepts text-based policy descriptions."""
+    policies = NegotiationPolicies(
+        discount_policy="Não oferecemos desconto",
+        installment_policy="Não oferecemos parcelamento",
+        interest_policy="Não cobramos juros",
+        penalty_policy="Não cobramos multa",
+        payment_methods=["pix"],
+        can_generate_payment_link=False,
+    )
+    assert policies.discount_policy == "Não oferecemos desconto"
+    assert policies.payment_methods == ["pix"]
+    assert policies.can_generate_payment_link is False
 
 
 def test_agent_config_json_schema():

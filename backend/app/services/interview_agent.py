@@ -40,7 +40,7 @@ class InterviewState(TypedDict):
     answers: list[dict]
     dynamic_questions_asked: int
     max_dynamic_questions: int
-    phase: str  # "core" | "dynamic" | "defaults" | "complete"
+    phase: str  # "core" | "dynamic" | "review" | "complete"
     needs_follow_up: bool
     follow_up_question: dict | None
     follow_up_count: int
@@ -319,16 +319,16 @@ async def generate_dynamic_question(
     max_dynamic = state.get("max_dynamic_questions", 8)
 
     if dynamic_count >= max_dynamic:
-        logger.info("Max dynamic questions reached (%d), transitioning to defaults", dynamic_count)
+        logger.info("Max dynamic questions reached (%d), transitioning to review", dynamic_count)
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return None, new_state
 
     if not settings.OPENAI_API_KEY:
         logger.warning("No OPENAI_API_KEY, skipping dynamic questions")
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return None, new_state
 
@@ -350,15 +350,15 @@ async def generate_dynamic_question(
     except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
         logger.warning("Dynamic question generation failed: %s", exc)
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return None, new_state
 
     question_text = data.get("question_text")
     if not question_text:
-        logger.warning("LLM returned empty question_text, transitioning to defaults")
+        logger.warning("LLM returned empty question_text, transitioning to review")
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return None, new_state
 
@@ -404,13 +404,13 @@ async def evaluate_interview_completeness(
     if dynamic_count >= max_dynamic:
         logger.info("Max dynamic questions reached (%d), interview complete", dynamic_count)
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return True, new_state
 
     if not settings.OPENAI_API_KEY:
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return True, new_state
 
@@ -442,7 +442,7 @@ async def evaluate_interview_completeness(
 
     if confidence >= 7:
         new_state = InterviewState(
-            **{**dict(state), "phase": "defaults", "current_question": None}
+            **{**dict(state), "phase": "review", "current_question": None}
         )
         return True, new_state
 
