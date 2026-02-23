@@ -1,4 +1,4 @@
-"""Web research service using SerpApi + LLM consolidation."""
+"""Web research service using Serper API + LLM consolidation."""
 
 import asyncio
 import json
@@ -13,7 +13,7 @@ from app.prompts.web_research import CONSOLIDATION_SYSTEM_PROMPT, build_consolid
 
 logger = logging.getLogger(__name__)
 
-SERPAPI_URL = "https://serpapi.com/search"
+SERPER_URL = "https://google.serper.dev/search"
 
 
 def _build_search_queries(company_name: str, website_url: str) -> list[str]:
@@ -34,7 +34,7 @@ def _build_search_queries(company_name: str, website_url: str) -> list[str]:
 
 
 async def _run_search_query(query: str) -> list[dict]:
-    """Execute a single SerpApi search query.
+    """Execute a single Serper API search query.
 
     Args:
         query: Search query string.
@@ -42,24 +42,21 @@ async def _run_search_query(query: str) -> list[dict]:
     Returns:
         List of dicts with keys: title, link, snippet. Empty list on failure.
     """
-    params = {
-        "q": query,
-        "api_key": settings.SEARCH_API_KEY,
-        "engine": "google",
-        "gl": "br",
-        "hl": "pt-br",
-        "num": 5,
+    headers = {
+        "X-API-KEY": settings.SEARCH_API_KEY,
+        "Content-Type": "application/json",
     }
+    body = {"q": query, "gl": "br", "hl": "pt-br", "num": 5}
 
     for attempt in range(2):
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.get(SERPAPI_URL, params=params)
+                resp = await client.post(SERPER_URL, json=body, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
 
             results = []
-            for item in data.get("organic_results", []):
+            for item in data.get("organic", []):
                 results.append({
                     "title": item.get("title", ""),
                     "link": item.get("link", ""),

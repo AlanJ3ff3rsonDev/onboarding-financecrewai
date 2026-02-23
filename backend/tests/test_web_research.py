@@ -1,4 +1,4 @@
-"""Tests for web research service (SerpApi + LLM consolidation)."""
+"""Tests for web research service (Serper API + LLM consolidation)."""
 
 import json
 
@@ -56,19 +56,19 @@ def test_build_search_queries():
 @pytest.mark.asyncio
 @patch("app.services.web_research.httpx.AsyncClient")
 async def test_run_search_query_success(mock_client_cls: MagicMock):
-    """Successful SerpApi query extracts title/link/snippet from organic_results."""
+    """Successful Serper query extracts title/link/snippet from organic results."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.raise_for_status = MagicMock()
     mock_response.json.return_value = {
-        "organic_results": [
+        "organic": [
             {"title": "Result 1", "link": "https://example.com/1", "snippet": "Snippet 1"},
             {"title": "Result 2", "link": "https://example.com/2", "snippet": "Snippet 2"},
         ]
     }
 
     mock_client = AsyncMock()
-    mock_client.get.return_value = mock_response
+    mock_client.post.return_value = mock_response
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_cls.return_value = mock_client
@@ -86,13 +86,13 @@ async def test_run_search_query_success(mock_client_cls: MagicMock):
 @pytest.mark.asyncio
 @patch("app.services.web_research.httpx.AsyncClient")
 async def test_run_search_query_empty_results(mock_client_cls: MagicMock):
-    """SerpApi query with no organic_results returns empty list."""
+    """Serper query with no organic results returns empty list."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    mock_response.json.return_value = {"organic_results": []}
+    mock_response.json.return_value = {"organic": []}
 
     mock_client = AsyncMock()
-    mock_client.get.return_value = mock_response
+    mock_client.post.return_value = mock_response
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_cls.return_value = mock_client
