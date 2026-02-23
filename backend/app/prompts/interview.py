@@ -110,10 +110,24 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
     ),
     InterviewQuestion(
         question_id="core_12",
-        question_text="Quais são as razões mais comuns que os devedores dão para não pagar?",
+        question_text="Existe alguma objeção ou situação específica do seu negócio que os clientes costumam usar para não pagar?",
         question_type="text",
         phase="core",
-        context_hint="Exemplos: 'já paguei', 'não reconheço essa dívida', 'não tenho dinheiro agora', 'vou pagar semana que vem'.",
+        context_hint="Objeções genéricas (como 'já paguei' ou 'não reconheço') o agente já sabe lidar. Queremos saber se há algo particular do seu setor — ex: 'o serviço não foi prestado', 'estou esperando reembolso do plano de saúde'.",
+    ),
+    InterviewQuestion(
+        question_id="core_13",
+        question_text="Como vocês sabem se um cliente pagou? Como ele pode comprovar o pagamento?",
+        question_type="text",
+        phase="core",
+        context_hint="Exemplos: 'conferimos no sistema ERP', 'o cliente envia comprovante por WhatsApp', 'o banco confirma automaticamente'.",
+    ),
+    InterviewQuestion(
+        question_id="core_14",
+        question_text="Existe alguma regulamentação específica do seu setor que impacta a cobrança?",
+        question_type="text",
+        phase="core",
+        context_hint="Exemplos: 'não podemos cobrar antes de 30 dias por lei', 'regulação da ANS impede corte imediato', 'LGPD limita o que podemos dizer'. Se não houver, diga 'não'.",
     ),
 ]
 
@@ -128,31 +142,24 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
         "Qual o perfil típico dos seus devedores inadimplentes?",
     ],
     "negotiation_depth": [
-        "Como funciona a negociação na prática — o agente propõe condições ou espera o devedor pedir?",
         "Existem regras diferentes de negociação por faixa de valor ou tempo de atraso da dívida?",
         "Qual a abordagem quando o devedor pede condições fora do padrão?",
-    ],
-    "scenario_handling": [
-        "Como o agente deve lidar quando o devedor diz 'já paguei'?",
-        "Como o agente deve lidar quando o devedor diz 'não reconheço essa dívida'?",
-        "O que fazer quando o devedor diz que não pode pagar agora?",
     ],
     "legal_judicial": [
         "Você tem um processo de cobrança judicial para dívidas maiores?",
         "Acima de qual valor a dívida vai para cobrança judicial?",
     ],
-    "communication": [
-        "Como o agente deve abrir a conversa?",
-        "Existem palavras ou expressões que devem ser evitadas?",
-        "Existem palavras ou expressões preferidas da sua marca?",
-    ],
     "segmentation": [
         "Você segmenta as dívidas por valor ou tempo de atraso?",
         "Existem regras diferentes para segmentos diferentes?",
     ],
-    "current_pain": [
-        "O que mais frustra você no processo de cobrança atual?",
-        "Como seria o cenário ideal de cobrança para você?",
+    "brand_language": [
+        "Existem termos ou expressões específicas da sua marca que o agente deve usar?",
+        "Há algum jargão do seu setor que o agente precisa conhecer?",
+    ],
+    "payment_operations": [
+        "Como funciona o processo de baixa de pagamento no seu sistema?",
+        "Quanto tempo leva para um pagamento ser confirmado no seu sistema?",
     ],
 }
 
@@ -176,12 +183,21 @@ Respostas curtas ou vagas (como "sim", "normal", "não sei", "talvez") geralment
 de aprofundamento. Respostas com detalhes específicos, exemplos ou explicações claras são \
 suficientes.
 
+REGRAS CRÍTICAS:
+- NÃO aprofunde conhecimento padrão de cobrança. O agente JÁ É ESPECIALISTA em cobrança. \
+Não peça mais detalhes sobre como lidar com objeções genéricas ("já paguei", "não reconheço"), \
+como abrir conversa, como lidar com devedor agressivo, etc. Esses cenários o agente já domina.
+- Se o cliente sinalizar frustração, impaciência ou irritação (ex: "isso vocês que sabem", \
+"isso é óbvio", "já respondi isso"), retorne needs_follow_up: false imediatamente.
+- Só peça aprofundamento para informações ESPECÍFICAS DA EMPRESA que o agente não tem como saber \
+sozinho (ex: políticas internas, valores, processos, exceções do negócio).
+
 Responda EXCLUSIVAMENTE com um objeto JSON válido no formato:
 {{"needs_follow_up": true/false, "follow_up_question": "pergunta de aprofundamento ou null", "reason": "motivo breve"}}
 
 Se needs_follow_up for false, follow_up_question deve ser null.
 Se needs_follow_up for true, gere uma pergunta de aprofundamento natural, específica e em \
-português que ajude a extrair mais detalhes úteis para configurar o agente de cobrança.
+português que ajude a extrair mais detalhes ESPECÍFICOS DA EMPRESA para configurar o agente.
 """
 
 DYNAMIC_QUESTION_PROMPT = """\
@@ -201,10 +217,13 @@ entrevista para configurar um agente de cobrança personalizado.
 Com base em tudo que você sabe até agora, qual é a ÚNICA pergunta mais importante que \
 ainda falta ser respondida para criar um excelente agente de cobrança para esta empresa?
 
-Considere:
-- O que ainda não está claro sobre o processo de cobrança?
-- Quais cenários o agente pode enfrentar que ainda não foram cobertos?
-- Quais políticas ou regras estão faltando?
+REGRAS CRÍTICAS:
+- NUNCA pergunte o que um agente especialista em cobrança já sabe. O agente já domina: \
+como abrir conversa, como lidar com "já paguei", "não reconheço", devedor agressivo, \
+objeções genéricas, técnicas de negociação, tom empático, etc.
+- Pergunte SOMENTE sobre informações ESPECÍFICAS DA EMPRESA que o agente não tem como \
+saber sozinho: processos internos, regras de negócio, particularidades do setor, \
+linguagem da marca, operações de pagamento, segmentação, etc.
 - NÃO repita perguntas já feitas (veja as respostas acima)
 - A pergunta deve ser específica ao negócio/segmento desta empresa
 
@@ -228,11 +247,16 @@ suficientes para gerar um agente de cobrança de alta qualidade.
 Avalie de 1 a 10 o quão confiante você está de que temos dados suficientes para gerar \
 um agente de cobrança completo e eficaz para esta empresa.
 
+LEMBRE-SE: O agente já é ESPECIALISTA em cobrança. Ele já sabe lidar com objeções \
+genéricas, cenários comuns, técnicas de negociação e comunicação. Você está avaliando \
+apenas se temos as informações ESPECÍFICAS DA EMPRESA (tom, políticas, processos, \
+exceções do negócio). Não desconte pontos por falta de conhecimento genérico de cobrança.
+
 Critérios:
-- 1-3: Faltam informações críticas (processo de cobrança, políticas de desconto, tom)
-- 4-6: Temos o básico mas faltam detalhes importantes para cenários específicos
-- 7-8: Temos informações suficientes para um bom agente, poucos gaps
-- 9-10: Cobertura excelente, agente será muito personalizado
+- 1-3: Faltam informações críticas específicas da empresa (nome, tom, métodos de pagamento)
+- 4-6: Temos o básico mas faltam detalhes sobre processos internos ou políticas
+- 7-8: Temos informações suficientes sobre a empresa para um bom agente
+- 9-10: Cobertura excelente das particularidades da empresa
 
 Responda EXCLUSIVAMENTE com um objeto JSON válido no formato:
 {{"confidence": 7, "reason": "motivo breve", "missing_area": "área que ainda falta ou null se confiança >= 7"}}

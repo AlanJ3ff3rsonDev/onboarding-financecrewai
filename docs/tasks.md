@@ -20,9 +20,10 @@
 | **M3** | Agent Generation | T18-T22 | DONE |
 | **M4** | Simulation | T23-T24 | DONE |
 | **M5** | Integration Test | T25 | DONE |
-| **M6** | Deploy | T26-T28 | Pending |
-| **M7** | Frontend Onboarding (Lovable) | T29-T35 | Pending |
-| **M8** | Integração Directus | T36 | Future |
+| **M5.5** | Refatoração Perguntas | T26-T28 | DONE |
+| **M6** | Deploy | T29-T31 | Pending |
+| **M7** | Frontend Onboarding (Lovable) | T32-T38 | Pending |
+| **M8** | Integração Directus | T39 | Future |
 
 ---
 
@@ -776,13 +777,67 @@
 
 ---
 
+## M5.5: Refatoração do Sistema de Perguntas
+
+### T26: Refatorar perguntas core e sistema de follow-up
+
+**Objective**: Reformular perguntas para capturar apenas o que é específico da empresa. O agente já é especialista em cobrança.
+
+**Dependencies**: T25
+
+**Definition of Done**:
+- core_12 reformulada: objeções específicas do negócio (não genéricas)
+- core_13 adicionada: verificação/comprovação de pagamento
+- core_14 adicionada: regulamentação setorial
+- FOLLOW_UP_EVALUATION_PROMPT atualizado: não aprofunda conhecimento padrão + detecta frustração
+- Detecção hardcoded de sinais de parada (frustração) em evaluate_and_maybe_follow_up()
+- Testes atualizados (14 core questions, novos testes de frustração)
+
+**Status**: `done`
+
+---
+
+### T27: Refatorar sistema de perguntas dinâmicas
+
+**Objective**: Reduzir perguntas dinâmicas, remover follow-ups em fase dinâmica, focar em informação específica da empresa.
+
+**Dependencies**: T26
+
+**Definition of Done**:
+- max_dynamic_questions: 8 → 3
+- Follow-ups desabilitados na fase dinâmica
+- DYNAMIC_QUESTION_BANK: removido scenario_handling, communication, current_pain; adicionado brand_language, payment_operations
+- DYNAMIC_QUESTION_PROMPT: "NUNCA pergunte o que um agente especialista já sabe"
+- INTERVIEW_COMPLETENESS_PROMPT: critérios mais generosos
+- Testes atualizados (novo teste de skip de follow-up em dynamic)
+
+**Status**: `done`
+
+---
+
+### T28: Atualizar prompt de geração do agente
+
+**Objective**: Agente usa expertise própria para preencher gaps; prompt adaptado para core_13/14.
+
+**Dependencies**: T27
+
+**Definition of Done**:
+- SYSTEM_PROMPT: agente é ESPECIALISTA, usa best practices para scenario_responses
+- build_prompt: inclui core_13 (verificação de pagamento) e core_14 (regulamentação)
+- ADJUSTMENT_SYSTEM_PROMPT: mesma filosofia de expertise
+- Testes atualizados (fixtures com core_13/14)
+
+**Status**: `done`
+
+---
+
 ## M6: Deploy
 
-### T26: Adicionar CORS no FastAPI
+### T29: Adicionar CORS no FastAPI
 
 **Objective**: Backend aceita requests do frontend Lovable.
 
-**Dependencies**: T25
+**Dependencies**: T28
 
 **Definition of Done**:
 - `CORSMiddleware` adicionado em `app/main.py`
@@ -793,11 +848,11 @@
 
 ---
 
-### T27: Criar Dockerfile + config Railway
+### T30: Criar Dockerfile + config Railway
 
 **Objective**: Backend pode ser deployado num container com Playwright/Chromium.
 
-**Dependencies**: T26
+**Dependencies**: T29
 
 **Definition of Done**:
 - `Dockerfile` na raiz de `backend/` com Python 3.13 + dependências Playwright
@@ -809,11 +864,11 @@
 
 ---
 
-### T28: Deploy no Railway + testar URL pública
+### T31: Deploy no Railway + testar URL pública
 
 **Objective**: Backend acessível via URL pública na internet.
 
-**Dependencies**: T27
+**Dependencies**: T30
 
 **Definition of Done**:
 - Backend deployado no Railway (ou Render)
@@ -830,11 +885,11 @@
 
 > Cada task abaixo inclui um **prompt para o Lovable** com objetivo, endpoints, e Definition of Done. Copie o prompt inteiro para o Lovable.
 
-### T29: Tela de boas-vindas
+### T32: Tela de boas-vindas
 
 **Objective**: Primeira tela do onboarding — coleta dados da empresa e cria sessão no backend.
 
-**Dependencies**: T28
+**Dependencies**: T31
 
 **Lovable Prompt**:
 ```
@@ -881,11 +936,11 @@ Estilo: limpo, moderno, cards com sombra suave. Cores da marca CollectAI.
 
 ---
 
-### T30: Tela de enriquecimento
+### T33: Tela de enriquecimento
 
 **Objective**: Mostra loading enquanto analisa o site, depois mostra dados extraídos.
 
-**Dependencies**: T29
+**Dependencies**: T32
 
 **Lovable Prompt**:
 ```
@@ -952,11 +1007,11 @@ Estilo: cards informativos, ícones por campo (empresa, produtos, público), cor
 
 ---
 
-### T31: Tela de entrevista — wizard de perguntas
+### T34: Tela de entrevista — wizard de perguntas
 
 **Objective**: Apresenta perguntas uma por uma, coleta respostas, mostra progresso. Esta é a tela mais complexa.
 
-**Dependencies**: T30
+**Dependencies**: T33
 
 **Lovable Prompt**:
 ```
@@ -1098,11 +1153,11 @@ Microfone discreto mas acessível ao lado do campo de texto.
 
 ---
 
-### T32: Tela de smart defaults
+### T35: Tela de smart defaults
 
 **Objective**: Mostra configurações pré-preenchidas para confirmação/ajuste.
 
-**Dependencies**: T31
+**Dependencies**: T34
 
 **Lovable Prompt**:
 ```
@@ -1187,11 +1242,11 @@ no máximo X vezes antes de parar").
 
 ---
 
-### T33: Tela do agente gerado
+### T36: Tela do agente gerado
 
 **Objective**: Mostra o AgentConfig gerado — system prompt, policies, guardrails. Opção de ajustar.
 
-**Dependencies**: T32
+**Dependencies**: T35
 
 **Lovable Prompt**:
 ```
@@ -1302,11 +1357,11 @@ Estilo: dashboard informativo, seções com ícones, collapsible cards.
 
 ---
 
-### T34: Tela de simulação
+### T37: Tela de simulação
 
 **Objective**: Mostra 2 conversas simuladas como chat — o "AHA Moment" do onboarding.
 
-**Dependencies**: T33
+**Dependencies**: T36
 
 **Lovable Prompt**:
 ```
@@ -1408,11 +1463,11 @@ avatar para agente e devedor, cores distintas por role, scroll suave.
 
 ---
 
-### T35: Integração de fluxo + estado global
+### T38: Integração de fluxo + estado global
 
 **Objective**: Conectar todas as 6 telas com navegação e estado compartilhado (session_id).
 
-**Dependencies**: T29-T34
+**Dependencies**: T32-T37
 
 **Lovable Prompt**:
 ```
@@ -1462,11 +1517,11 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 
 ## M8: Integração Directus (futuro)
 
-### T36: Salvar AgentConfig no Directus
+### T39: Salvar AgentConfig no Directus
 
 **Objective**: Quando onboarding completa, salvar o AgentConfig na collection de agents do Directus.
 
-**Dependencies**: T35
+**Dependencies**: T38
 
 **Definition of Done**:
 - Mapear campos do AgentConfig para a collection "agents" no Directus
@@ -1506,14 +1561,17 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 | T23 | Simulation prompt + service | M4 | T18 | `done` |
 | T24 | Simulation endpoint | M4 | T21, T23 | `done` |
 | T25 | End-to-end integration test | M5 | T24 | `done` |
-| T26 | CORS configuration | M6 | T25 | `pending` |
-| T27 | Dockerfile + Railway config | M6 | T26 | `pending` |
-| T28 | Deploy to Railway + verify | M6 | T27 | `pending` |
-| T29 | Tela de Boas-vindas | M7 | T28 | `pending` |
-| T30 | Tela de Enriquecimento | M7 | T29 | `pending` |
-| T31 | Tela de Entrevista (wizard) | M7 | T30 | `pending` |
-| T32 | Tela de Smart Defaults | M7 | T31 | `pending` |
-| T33 | Tela do Agente Gerado | M7 | T32 | `pending` |
-| T34 | Tela de Simulação | M7 | T33 | `pending` |
-| T35 | Integração de fluxo completo | M7 | T34 | `pending` |
-| T36 | Salvar AgentConfig no Directus | M8 | T35 | `pending` |
+| T26 | Refatorar perguntas core + follow-up | M5.5 | T25 | `done` |
+| T27 | Refatorar perguntas dinâmicas | M5.5 | T26 | `done` |
+| T28 | Atualizar prompt de geração | M5.5 | T27 | `done` |
+| T29 | CORS configuration | M6 | T28 | `pending` |
+| T30 | Dockerfile + Railway config | M6 | T29 | `pending` |
+| T31 | Deploy to Railway + verify | M6 | T30 | `pending` |
+| T32 | Tela de Boas-vindas | M7 | T31 | `pending` |
+| T33 | Tela de Enriquecimento | M7 | T32 | `pending` |
+| T34 | Tela de Entrevista (wizard) | M7 | T33 | `pending` |
+| T35 | Tela de Smart Defaults | M7 | T34 | `pending` |
+| T36 | Tela do Agente Gerado | M7 | T35 | `pending` |
+| T37 | Tela de Simulação | M7 | T36 | `pending` |
+| T38 | Integração de fluxo completo | M7 | T37 | `pending` |
+| T39 | Salvar AgentConfig no Directus | M8 | T38 | `pending` |

@@ -76,7 +76,7 @@ def initialize(state: InterviewState) -> dict:
         "current_question": None,
         "answers": [],
         "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 8,
+        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -172,7 +172,7 @@ def deserialize_state(data: dict) -> InterviewState:
         current_question=data.get("current_question"),
         answers=data.get("answers", []),
         dynamic_questions_asked=data.get("dynamic_questions_asked", 0),
-        max_dynamic_questions=data.get("max_dynamic_questions", 8),
+        max_dynamic_questions=data.get("max_dynamic_questions", 3),
         phase=data.get("phase", "core"),
         needs_follow_up=data.get("needs_follow_up", False),
         follow_up_question=data.get("follow_up_question"),
@@ -238,6 +238,23 @@ def _get_parent_question_id(question_id: str) -> str:
     return question_id
 
 
+FRUSTRATION_SIGNALS = [
+    "você deveria saber",
+    "vocês deveriam saber",
+    "não é trabalho seu",
+    "isso vocês que sabem",
+    "isso é óbvio",
+    "já respondi isso",
+    "já disse isso",
+    "não vou repetir",
+    "chega de perguntas",
+    "cansei",
+    "que saco",
+    "isso é básico",
+    "pergunta sem sentido",
+]
+
+
 async def evaluate_and_maybe_follow_up(
     state: InterviewState,
     question_id: str,
@@ -254,6 +271,12 @@ async def evaluate_and_maybe_follow_up(
         return False, None
 
     if not settings.OPENAI_API_KEY:
+        return False, None
+
+    # Frustration detection: if user signals impatience, skip follow-up
+    answer_lower = answer.lower()
+    if any(signal in answer_lower for signal in FRUSTRATION_SIGNALS):
+        logger.info("Frustration signal detected in answer, skipping follow-up")
         return False, None
 
     current = state.get("current_question", {})
@@ -468,7 +491,7 @@ async def create_interview(enrichment_data: dict | None = None) -> InterviewStat
         "current_question": None,
         "answers": [],
         "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 8,
+        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -531,12 +554,17 @@ async def submit_answer(
     )
 
     # Follow-up evaluation for text answers, or select/multiselect with "outro"/"depende"
+    # Skip follow-ups entirely for dynamic phase questions
     question_type = current.get("question_type", "text")
     answer_lower = answer.lower()
+    is_dynamic_phase = updated_state.get("phase") == "dynamic"
     needs_evaluation = (
-        question_type == "text"
-        or "outro" in answer_lower
-        or "depende" in answer_lower
+        not is_dynamic_phase
+        and (
+            question_type == "text"
+            or "outro" in answer_lower
+            or "depende" in answer_lower
+        )
     )
     if needs_evaluation:
         needs_fu, fu_question = await evaluate_and_maybe_follow_up(

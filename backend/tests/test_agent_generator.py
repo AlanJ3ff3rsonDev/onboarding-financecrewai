@@ -103,8 +103,20 @@ def _sample_interview_responses() -> list[dict]:
         },
         {
             "question_id": "core_12",
-            "question_text": "Razões comuns para não pagar?",
-            "answer": "já paguei, não reconheço, não tenho dinheiro, vou pagar semana que vem",
+            "question_text": "Objeções específicas do negócio?",
+            "answer": "Clientes dizem que o serviço não foi prestado conforme contratado",
+            "source": "text",
+        },
+        {
+            "question_id": "core_13",
+            "question_text": "Como vocês sabem se um cliente pagou?",
+            "answer": "O banco confirma via API e o cliente pode enviar comprovante por WhatsApp",
+            "source": "text",
+        },
+        {
+            "question_id": "core_14",
+            "question_text": "Regulamentação específica do setor?",
+            "answer": "Não temos regulamentação específica além do CDC",
             "source": "text",
         },
         {
@@ -152,14 +164,16 @@ def test_prompt_includes_all_sections():
     assert "Tom e Comunicação" in prompt
     assert "Políticas de Negociação" in prompt
     assert "Guardrails" in prompt
-    assert "Cenários" in prompt
+    assert "Operações e Cenários" in prompt
 
     # Key interview answers present
     assert "Software de cobrança automatizada" in prompt  # core_1
     assert "amigavel_firme" in prompt  # core_5
     assert "Nunca ameaçar" in prompt  # core_11
     assert "solicita_humano" in prompt  # core_10
-    assert "já paguei" in prompt  # core_12
+    assert "serviço não foi prestado" in prompt  # core_12 (business-specific objections)
+    assert "comprovante" in prompt  # core_13 (payment verification)
+    assert "CDC" in prompt  # core_14 (regulations)
 
     # Financial policy answers (now text-based)
     assert "10% de desconto" in prompt  # core_6 text answer

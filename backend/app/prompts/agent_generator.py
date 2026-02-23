@@ -12,6 +12,13 @@ SYSTEM_PROMPT = (
     "You are an expert debt collection agent configurator for Brazilian businesses. "
     "You receive structured data about a company (from website analysis and a detailed interview) "
     "and generate a complete AgentConfig JSON that will power an AI collection agent.\n\n"
+    "IMPORTANT: The collection agent you are configuring is ALREADY AN EXPERT in debt collection. "
+    "It already knows how to handle common objections ('já paguei', 'não reconheço a dívida', "
+    "'não posso pagar agora'), how to deal with aggressive debtors, how to open conversations, "
+    "and all standard collection best practices. Use your expertise to generate comprehensive "
+    "scenario_responses and fill any gaps with BEST PRACTICES adapted to the company's tone "
+    "and policies. Do NOT leave scenario_responses generic — make them specific to the company's "
+    "tone, payment methods, and negotiation policies.\n\n"
     "Your most important output is the 'system_prompt' field — this is the detailed instruction set "
     "that the collection agent will follow in every conversation with debtors. It must be:\n"
     "- Comprehensive (at least 300 words)\n"
@@ -35,12 +42,15 @@ SYSTEM_PROMPT = (
 
 ADJUSTMENT_SYSTEM_PROMPT = (
     "You are an expert debt collection agent configurator for Brazilian businesses. "
+    "The collection agent is ALREADY AN EXPERT in debt collection — it knows all "
+    "standard best practices. Use your expertise to fill gaps and generate comprehensive responses.\n\n"
     "A user has just adjusted an existing agent configuration. "
     "Your job is to regenerate ONLY two fields to stay consistent with the changes:\n"
     "1. 'system_prompt': The complete instruction set for the collection agent "
     "(minimum 300 words, in Brazilian Portuguese)\n"
     "2. 'scenario_responses': The four scenario response strings (already_paid, "
-    "dont_recognize_debt, cant_pay_now, aggressive_debtor) — all in Brazilian Portuguese\n\n"
+    "dont_recognize_debt, cant_pay_now, aggressive_debtor) — all in Brazilian Portuguese, "
+    "adapted to the company's specific tone and policies\n\n"
     "You will receive the FULL updated agent configuration. "
     "Regenerate system_prompt and scenario_responses to reflect ALL current settings "
     "(especially tone, negotiation policies, guardrails, and company context). "
@@ -183,7 +193,7 @@ def build_prompt(
     s3_lines = ["## 3. Perfil do Devedor"]
     s3_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_12", "Objeções comuns dos devedores"
+            interview_responses, "core_12", "Objeções específicas do negócio"
         )
     )
     sections.append("\n".join(s3_lines))
@@ -249,14 +259,26 @@ def build_prompt(
             "O que nunca fazer/dizer"
         )
     )
+    s7_lines.append(
+        _format_answer_with_followups(
+            interview_responses, "core_14",
+            "Regulamentação setorial"
+        )
+    )
     sections.append("\n".join(s7_lines))
 
-    # Section 8: Scenario Handling
-    s8_lines = ["## 8. Tratamento de Cenários"]
+    # Section 8: Operações e Cenários
+    s8_lines = ["## 8. Operações e Cenários"]
     s8_lines.append(
         _format_answer_with_followups(
             interview_responses, "core_12",
-            "Objeções comuns relatadas pelo cliente"
+            "Objeções específicas do negócio"
+        )
+    )
+    s8_lines.append(
+        _format_answer_with_followups(
+            interview_responses, "core_13",
+            "Verificação e comprovação de pagamento"
         )
     )
     sections.append("\n".join(s8_lines))

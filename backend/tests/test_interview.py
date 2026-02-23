@@ -18,8 +18,8 @@ from app.services.interview_agent import (
 
 
 def test_core_questions_count():
-    """Exactly 12 core questions defined."""
-    assert len(CORE_QUESTIONS) == 12
+    """Exactly 14 core questions defined."""
+    assert len(CORE_QUESTIONS) == 14
 
 
 def test_core_questions_schema():
@@ -50,16 +50,15 @@ def test_financial_questions_are_open_text():
 
 
 def test_dynamic_question_bank_categories():
-    """All 8 categories present with non-empty question lists."""
+    """All 7 categories present with non-empty question lists."""
     expected_categories = {
         "business_model",
         "debtor_profile",
         "negotiation_depth",
-        "scenario_handling",
         "legal_judicial",
-        "communication",
         "segmentation",
-        "current_pain",
+        "brand_language",
+        "payment_operations",
     }
     assert set(DYNAMIC_QUESTION_BANK.keys()) == expected_categories
     for category, questions in DYNAMIC_QUESTION_BANK.items():
@@ -73,19 +72,19 @@ def test_dynamic_question_bank_categories():
 
 @pytest.mark.asyncio
 async def test_create_interview():
-    """Creates interview with 12 core questions (11 remaining + 1 current)."""
+    """Creates interview with 14 core questions (13 remaining + 1 current)."""
     state = await create_interview()
     assert state["phase"] == "core"
-    assert len(state["core_questions_remaining"]) == 11
+    assert len(state["core_questions_remaining"]) == 13
     assert state["current_question"] is not None
     assert state["current_question"]["question_id"] == "core_1"
     assert state["answers"] == []
     assert state["dynamic_questions_asked"] == 0
-    assert state["max_dynamic_questions"] == 8
+    assert state["max_dynamic_questions"] == 3
     assert state["needs_follow_up"] is False
     assert state["follow_up_question"] is None
-    # Total core questions: 11 remaining + 1 current = 12
-    assert len(state["core_questions_remaining"]) + 1 == 12
+    # Total core questions: 13 remaining + 1 current = 14
+    assert len(state["core_questions_remaining"]) + 1 == 14
 
 
 @pytest.mark.asyncio
@@ -143,7 +142,7 @@ async def test_get_next_question_advances():
     question, new_state = await get_next_question(state)
     assert question is not None
     assert question.question_id == "core_2"
-    assert len(new_state["core_questions_remaining"]) == 10
+    assert len(new_state["core_questions_remaining"]) == 12
 
 
 @pytest.mark.asyncio
@@ -743,6 +742,92 @@ async def test_multiselect_with_outro_triggers_follow_up():
     mock_client.chat.completions.create.assert_called_once()
 
 
+# ---------- T26: Frustration detection + dynamic follow-up skip ----------
+
+
+@pytest.mark.asyncio
+async def test_frustration_signal_skips_follow_up():
+    """Answer with frustration signal skips follow-up without LLM call."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+
+    mock_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode descrever melhor?",
+        "reason": "Curto",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, new_state = await submit_answer(
+                state, "core_1", "isso vocês que sabem, não é meu trabalho", "text",
+            )
+
+    # Should advance to core_2 without follow-up (frustration detected)
+    assert next_q is not None
+    assert next_q.question_id == "core_2"
+    assert new_state["needs_follow_up"] is False
+    # LLM should NOT have been called (frustration short-circuited)
+    mock_client.chat.completions.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dynamic_phase_skips_follow_up():
+    """Answering dynamic question does not trigger follow-up evaluation."""
+    from unittest.mock import AsyncMock, patch
+
+    state = _dynamic_state(
+        dynamic_questions_asked=1,
+        current_question={
+            "question_id": "dynamic_1",
+            "question_text": "Qual o ticket médio?",
+            "question_type": "text",
+            "options": None,
+            "pre_filled_value": None,
+            "is_required": True,
+            "supports_audio": True,
+            "phase": "dynamic",
+            "context_hint": None,
+        },
+    )
+
+    # Mock completeness eval (not complete) and dynamic question gen
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up",
+               new_callable=AsyncMock, return_value=(True, {"fake": "followup"})) as mock_fu:
+        with patch("app.services.interview_agent.evaluate_interview_completeness",
+                   new_callable=AsyncMock, return_value=(False, state)):
+            dyn_q_dict = {
+                "question_id": "dynamic_2",
+                "question_text": "Outra pergunta?",
+                "question_type": "text",
+                "options": None,
+                "pre_filled_value": None,
+                "is_required": True,
+                "supports_audio": True,
+                "phase": "dynamic",
+                "context_hint": None,
+            }
+            gen_state = InterviewState(
+                **{**dict(state),
+                   "current_question": dyn_q_dict,
+                   "dynamic_questions_asked": 2,
+                   }
+            )
+            with patch("app.services.interview_agent.generate_dynamic_question",
+                       new_callable=AsyncMock,
+                       return_value=(InterviewQuestion.model_validate(dyn_q_dict), gen_state)):
+                next_q, _ = await submit_answer(
+                    state, "dynamic_1", "R$500 em média", "text",
+                )
+
+    # Follow-up should NOT have been called for dynamic phase
+    mock_fu.assert_not_called()
+    assert next_q.question_id == "dynamic_2"
+
+
 # ---------- T13: Dynamic question generation ----------
 
 
@@ -761,10 +846,10 @@ def _dynamic_state(**overrides) -> InterviewState:
         "answers": [
             {"question_id": f"core_{i}", "answer": f"Resposta {i}",
              "source": "text", "question_text": f"Pergunta {i}"}
-            for i in range(1, 13)
+            for i in range(1, 15)
         ],
         "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 8,
+        "max_dynamic_questions": 3,
         "phase": "dynamic",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -776,25 +861,25 @@ def _dynamic_state(**overrides) -> InterviewState:
 
 @pytest.mark.asyncio
 async def test_dynamic_phase_starts():
-    """After all 12 core questions answered, get_next_question enters dynamic phase."""
+    """After all 14 core questions answered, get_next_question enters dynamic phase."""
     from unittest.mock import AsyncMock, patch
 
-    # State with 1 core question remaining (core_12) — simulate answering it
+    # State with 1 core question remaining (core_14) — simulate answering it
     state = await create_interview()
 
-    # Fast-forward to core_12: empty the remaining list except last
+    # Fast-forward to core_14: empty the remaining list except last
     last_q = CORE_QUESTIONS[-1].model_dump()
-    state_at_core_12 = InterviewState(
+    state_at_core_14 = InterviewState(
         enrichment_data={},
         core_questions_remaining=[],
         current_question=last_q,
         answers=[
             {"question_id": f"core_{i}", "answer": f"Resp {i}",
              "source": "text", "question_text": f"Q{i}"}
-            for i in range(1, 12)
+            for i in range(1, 14)
         ],
         dynamic_questions_asked=0,
-        max_dynamic_questions=8,
+        max_dynamic_questions=3,
         phase="core",
         needs_follow_up=False,
         follow_up_question=None,
@@ -815,7 +900,7 @@ async def test_dynamic_phase_starts():
             with patch("app.services.interview_agent.settings") as mock_settings:
                 mock_settings.OPENAI_API_KEY = "test-key"
                 next_q, new_state = await submit_answer(
-                    state_at_core_12, "core_12", "Já paguei, não reconheço", "text",
+                    state_at_core_14, "core_14", "Não temos regulamentação específica", "text",
                 )
 
     assert next_q is not None
@@ -823,7 +908,7 @@ async def test_dynamic_phase_starts():
     assert next_q.phase == "dynamic"
     assert new_state["phase"] == "dynamic"
     assert new_state["dynamic_questions_asked"] == 1
-    assert len(new_state["answers"]) == 12
+    assert len(new_state["answers"]) == 14
 
 
 @pytest.mark.asyncio
@@ -896,8 +981,8 @@ async def test_dynamic_question_contextual():
 
 @pytest.mark.asyncio
 async def test_max_dynamic_reached():
-    """After 8 dynamic questions, transitions to 'review' without LLM call."""
-    state = _dynamic_state(dynamic_questions_asked=8)
+    """After 3 dynamic questions, transitions to 'review' without LLM call."""
+    state = _dynamic_state(dynamic_questions_asked=3)
 
     question, new_state = await generate_dynamic_question(state)
 
@@ -1028,9 +1113,9 @@ def test_progress_not_started(client: TestClient) -> None:
     assert data["phase"] == "not_started"
     assert data["total_answered"] == 0
     assert data["core_answered"] == 0
-    assert data["core_total"] == 12
+    assert data["core_total"] == 14
     assert data["dynamic_answered"] == 0
-    assert data["estimated_remaining"] == 12
+    assert data["estimated_remaining"] == 14
     assert data["is_complete"] is False
 
 
@@ -1064,7 +1149,7 @@ def test_progress_midway(client: TestClient) -> None:
     data = resp.json()
     assert data["phase"] == "core"
     assert data["core_answered"] == 2
-    assert data["core_total"] == 12
+    assert data["core_total"] == 14
     assert data["total_answered"] == 2
     assert data["dynamic_answered"] == 0
     assert data["estimated_remaining"] > 0
@@ -1084,7 +1169,7 @@ def test_progress_during_follow_up(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Simulate: core_1 answered, currently on followup_core_1_1 (remaining has 11 items = core_2..core_12)
+    # Simulate: core_1 answered, currently on followup_core_1_1 (remaining has 13 items = core_2..core_14)
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     state = {
@@ -1093,7 +1178,7 @@ def test_progress_during_follow_up(client: TestClient) -> None:
             {"question_id": f"core_{i}", "question_text": f"Q{i}",
              "question_type": "text", "options": None, "pre_filled_value": None,
              "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None}
-            for i in range(2, 13)
+            for i in range(2, 15)
         ],
         "current_question": {
             "question_id": "followup_core_1_1",
@@ -1105,7 +1190,7 @@ def test_progress_during_follow_up(client: TestClient) -> None:
             {"question_id": "core_1", "answer": "Software", "source": "text", "question_text": "Q1"},
         ],
         "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 8,
+        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": True,
         "follow_up_question": None,
@@ -1148,10 +1233,10 @@ def test_progress_review_phase(client: TestClient) -> None:
         "answers": [
             {"question_id": f"core_{i}", "answer": f"Resp {i}",
              "source": "text", "question_text": f"Q{i}"}
-            for i in range(1, 13)
+            for i in range(1, 15)
         ],
-        "dynamic_questions_asked": 5,
-        "max_dynamic_questions": 8,
+        "dynamic_questions_asked": 2,
+        "max_dynamic_questions": 3,
         "phase": "review",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -1166,9 +1251,9 @@ def test_progress_review_phase(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["phase"] == "review"
-    assert data["core_answered"] == 12
-    assert data["dynamic_answered"] == 5
-    assert data["total_answered"] == 12
+    assert data["core_answered"] == 14
+    assert data["dynamic_answered"] == 2
+    assert data["total_answered"] == 14
     assert data["estimated_remaining"] == 0
     assert data["is_complete"] is True
 
@@ -1208,10 +1293,10 @@ def _session_in_review_phase(client: TestClient) -> str:
         "answers": [
             {"question_id": f"core_{i}", "answer": f"Resp {i}",
              "source": "text", "question_text": f"Q{i}"}
-            for i in range(1, 13)
+            for i in range(1, 15)
         ],
-        "dynamic_questions_asked": 5,
-        "max_dynamic_questions": 8,
+        "dynamic_questions_asked": 2,
+        "max_dynamic_questions": 3,
         "phase": "review",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -1220,7 +1305,7 @@ def _session_in_review_phase(client: TestClient) -> str:
     session.interview_state = serialize_state(state)
     session.interview_responses = [
         {"question_id": f"core_{i}", "answer": f"Resp {i}", "source": "text"}
-        for i in range(1, 13)
+        for i in range(1, 15)
     ]
     session.status = "interviewing"
     db.commit()
@@ -1236,7 +1321,7 @@ def test_get_review(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["confirmed"] is False
-    assert len(data["answers"]) == 12
+    assert len(data["answers"]) == 14
     assert isinstance(data["enrichment"], dict)
 
 
@@ -1304,7 +1389,7 @@ def test_review_wrong_phase(client: TestClient) -> None:
             {"question_id": f"core_{i}", "question_text": f"Q{i}",
              "question_type": "text", "options": None, "pre_filled_value": None,
              "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None}
-            for i in range(2, 13)
+            for i in range(2, 15)
         ],
         "current_question": {
             "question_id": "core_1", "question_text": "Q1",
@@ -1313,7 +1398,7 @@ def test_review_wrong_phase(client: TestClient) -> None:
         },
         "answers": [],
         "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 8,
+        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,

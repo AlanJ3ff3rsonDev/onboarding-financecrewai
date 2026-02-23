@@ -48,6 +48,7 @@ Track important decisions made during development that deviate from or clarify t
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
 | 2026-02-22 | Refactored financial questions from select to open-ended text (core_6/7/8/9). Removed SmartDefaults entirely. Replaced NegotiationPolicies numeric fields with text descriptions. Replaced "defaults" interview phase with "review" phase. | Specific financial values (discount %, interest rate, penalty %, installment count) are campaign-level configuration, not onboarding-level. Onboarding captures the company's macro collection methodology. | 10 tests removed (SmartDefaults/numeric), 8 tests added (review/text-based). 120→116 total tests. All schemas, prompts, services, routers, and tests updated. |
+| 2026-02-22 | M5.5: Refactored question system. Core 12→14 questions. Max dynamic 8→3. Follow-ups disabled for dynamic phase. Frustration detection added. Question bank cleaned up. Agent generator now instructs LLM that agent is expert. | Agent already knows collection best practices — onboarding should only capture company-specific information. Generic questions and aggressive follow-ups were making the experience frustrating. | 116→118 tests. Tasks renumbered: old T26-T36 → T29-T39. |
 | 2026-02-20 | Removed contact hours from SmartDefaults and AgentConfig (contact_hours_weekday, contact_hours_saturday, contact_sunday, ContactHours schema) | In the final solution, messages are always available — timing is user-controlled, not agent-controlled. These fields would be unnecessary questions. | SmartDefaults: 11→8 fields. Guardrails: removed contact_hours. Removed _validate_contact_hours(). Removed test_defaults_validation_hours. 85→84 tests. |
 | 2026-02-19 | Expanded core questions from 10 to 12: added juros (core_8) and multa (core_9) | User feedback: not all businesses charge interest/fines — need explicit "none" option | All task refs updated (T09, T25). core_6 changed from slider to select. IDs renumbered: old 8/9/10 → 10/11/12 |
 | 2026-02-20 | T13 uses async helper functions instead of formal LangGraph nodes for dynamic question generation and completeness evaluation | Matches T12 pattern (follow-up evaluation). Adding async nodes to synchronous LangGraph graphs would require significant refactoring. Helpers achieve identical functionality. | Task DoD says "adds nodes" but `generate_dynamic_question()` and `evaluate_interview_completeness()` serve the same purpose as nodes would. |
@@ -65,6 +66,51 @@ Track bugs or problems that need attention but aren't blocking current work.
 ---
 
 ## Development Log
+
+### 2026-02-22 — M5.5 (T26-T28): Refatoração do Sistema de Perguntas
+
+**Status**: completed
+
+**What was done**:
+
+**T26 — Refatorar perguntas core e sistema de follow-up**:
+- **core_12 reformulada**: "Quais são as razões mais comuns..." → "Existe alguma objeção ou situação específica do seu negócio..." (foco em objeções business-specific, não genéricas)
+- **core_13 adicionada**: "Como vocês sabem se um cliente pagou? Como ele pode comprovar o pagamento?" (informação operacional que o agente precisa)
+- **core_14 adicionada**: "Existe alguma regulamentação específica do seu setor que impacta a cobrança?" (guardrails setoriais)
+- **FOLLOW_UP_EVALUATION_PROMPT melhorado**: adicionado "NÃO aprofunde conhecimento padrão de cobrança" + "se cliente sinaliza frustração, retorne needs_follow_up: false"
+- **Detecção de frustração hardcoded**: lista FRUSTRATION_SIGNALS com 13 frases ("isso vocês que sabem", "cansei", "chega de perguntas", etc.) — check antes do LLM call em evaluate_and_maybe_follow_up()
+
+**T27 — Refatorar sistema de perguntas dinâmicas**:
+- **max_dynamic_questions: 8 → 3** (em initialize(), create_interview(), deserialize_state())
+- **Follow-ups desabilitados na fase dinâmica**: condição `not is_dynamic_phase` adicionada em submit_answer()
+- **DYNAMIC_QUESTION_BANK reescrito**: removido scenario_handling, communication, current_pain (genéricos). Mantido business_model, debtor_profile, negotiation_depth, legal_judicial, segmentation. Adicionado brand_language, payment_operations. Total: 8→7 categorias
+- **DYNAMIC_QUESTION_PROMPT reescrito**: "NUNCA pergunte o que um agente especialista em cobrança já sabe"
+- **INTERVIEW_COMPLETENESS_PROMPT ajustado**: critérios mais generosos — "o agente já é ESPECIALISTA, avalie apenas informações ESPECÍFICAS DA EMPRESA"
+
+**T28 — Atualizar prompt de geração do agente**:
+- **SYSTEM_PROMPT reformulado**: "The collection agent is ALREADY AN EXPERT. Use your expertise to generate comprehensive scenario_responses and fill gaps with BEST PRACTICES adapted to the company's tone and policies."
+- **build_prompt adaptado**: core_13 em "Operações e Cenários" (verificação de pagamento), core_14 em "Guardrails e Escalação" (regulamentação setorial). Seção 8 renomeada de "Tratamento de Cenários" → "Operações e Cenários"
+- **ADJUSTMENT_SYSTEM_PROMPT**: mesma filosofia adicionada
+
+**Files modified** (5):
+- `app/prompts/interview.py` — core_12 reformulada, core_13/14 adicionadas, question bank reescrito, prompts melhorados
+- `app/services/interview_agent.py` — FRUSTRATION_SIGNALS, frustration detection, max_dynamic 8→3, follow-up skip for dynamic
+- `app/prompts/agent_generator.py` — SYSTEM_PROMPT expert philosophy, build_prompt for core_13/14, ADJUSTMENT_SYSTEM_PROMPT
+- `tests/test_interview.py` — All counts updated (12→14, 8→3), 2 new tests
+- `tests/test_agent_generator.py` — Fixtures updated with core_12/13/14 answers, assertions updated
+
+**Tests**:
+- [x] Automated: 118/118 tests passing (116 existing updated + 2 new)
+- [x] New: test_frustration_signal_skips_follow_up — frustration phrase detected, LLM not called, advances normally
+- [x] New: test_dynamic_phase_skips_follow_up — dynamic answer skips follow-up evaluation entirely
+
+**Issues found**:
+- None
+
+**Next steps**:
+- Git commit & push. Next task: T29 (CORS configuration)
+
+---
 
 ### 2026-02-22 — Refactor: Financial Questions + SmartDefaults Removal
 
