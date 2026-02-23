@@ -10,6 +10,7 @@ pytestmark = pytest.mark.integration
 # ---------------------------------------------------------------------------
 
 CORE_ANSWERS: dict[str, str] = {
+    "core_0": "Sofia",
     "core_1": (
         "A CollectAI oferece uma plataforma SaaS de cobranca digital que utiliza "
         "agentes virtuais inteligentes via WhatsApp para automatizar o processo de "
@@ -219,11 +220,11 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp.status_code == 200
     first_q = resp.json()
-    assert first_q["question_id"] == "core_1"
+    assert first_q["question_id"] == "core_0"
     assert first_q["phase"] == "core"
 
-    # ── Step 5: Answer all 15 core questions ─────────────────────────────
-    current_qid = "core_1"
+    # ── Step 5: Answer all 16 core questions ─────────────────────────────
+    current_qid = "core_0"
     last_data: dict = {}
     core_answered = 0
 
@@ -238,13 +239,13 @@ def test_full_onboarding_flow(client: TestClient) -> None:
             break
         current_qid = next_q["question_id"]
 
-    assert core_answered == 15, f"Expected 15 core answers, got {core_answered}"
+    assert core_answered == 16, f"Expected 16 core answers, got {core_answered}"
 
-    # Verify all 15 core questions answered
+    # Verify all 16 core questions answered
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
     assert resp.status_code == 200
     progress = resp.json()
-    assert progress["core_answered"] == 15
+    assert progress["core_answered"] == 16
 
     # ── Step 6: Answer dynamic questions until review ────────────────────
     final_data = _answer_dynamic_questions(client, session_id, last_data)

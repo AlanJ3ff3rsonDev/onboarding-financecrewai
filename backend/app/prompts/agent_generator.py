@@ -167,6 +167,15 @@ def build_prompt(
         "com base nos dados abaixo."
     )
 
+    # Section 0: Agent Identity (conditional — only if client named the agent)
+    agent_name = _get_answer_by_id(interview_responses, "core_0")
+    skip_names = {"nao", "não", "passo", "n", "nao respondida", "não respondida"}
+    if agent_name.strip().lower() not in skip_names:
+        sections.append(
+            f"## 0. Identidade do Agente\n"
+            f"- Nome escolhido para o agente: {agent_name}"
+        )
+
     # Section 1: Company Context
     sections.append(_build_company_section(company_profile))
 

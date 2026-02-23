@@ -68,6 +68,39 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-23 — T30 (M5.7): Pergunta de nome do agente (core_0)
+
+**Status**: completed
+
+**What was done**:
+- **core_0 added as first interview question**: Optional text question "Quer dar um nome ao seu agente de cobrança?" with context_hint showing examples (Sofia, Carlos, Ana). Inserted as first element of `CORE_QUESTIONS` list.
+- **Total core questions**: 15 → 16 (core_0 is optional like core_10_open)
+- **Follow-up skip for optional core questions**: Added `is_optional_question` check in `submit_answer()` — questions with `is_required=False` and `phase="core"` skip follow-up LLM evaluation. Cleanly covers both core_0 and core_10_open.
+- **Agent identity section in generator prompt**: `build_prompt()` now conditionally includes "## 0. Identidade do Agente" section with the chosen name. Skipped when client answered "nao", "não", "passo", "n", or didn't answer.
+- **All tests updated**: counts 15→16, first question core_1→core_0, helpers updated with core_0 in answers lists, all endpoint tests answer core_0 before core_1.
+
+**Files modified** (7):
+- `app/prompts/interview.py` — added core_0 as first CORE_QUESTIONS entry
+- `app/services/interview_agent.py` — added `is_optional_question` check in submit_answer() needs_evaluation condition
+- `app/prompts/agent_generator.py` — added Section 0 (Identidade do Agente) conditional block in build_prompt()
+- `tests/test_interview.py` — all counts/assertions updated, 2 new tests added
+- `tests/test_agent_generator.py` — fixture updated with core_0, assertions for identity section, 1 new test
+- `tests/test_integration.py` — added core_0 to CORE_ANSWERS, updated first question assertion and count
+- `cli_test.py` — question count 15→16
+
+**Tests**:
+- [x] Automated: 55/55 interview tests (53 updated + 2 new: test_core_0_is_first_question, test_core_0_optional_skips_follow_up)
+- [x] Automated: 23/23 agent generator tests (22 updated + 1 new: test_prompt_skips_agent_identity_when_declined)
+- [x] Automated: Full suite 122/122 unit tests passing (no regressions)
+
+**Issues found**:
+- **Bug: follow-up questions also skipped by optional check**: Initial implementation checked only `is_required is False`, but follow-up questions also have `is_required=False` (they're generated with that field). This caused follow-ups to be skipped entirely, breaking `test_max_follow_ups`. **Fix**: Narrowed check to `is_required is False AND phase == "core"`, since follow-ups have `phase="follow_up"`.
+
+**Next steps**:
+- Manual test, then git commit & push. Next task: T31 (Avatar upload endpoint).
+
+---
+
 ### 2026-02-22 — T29 (M5.6): core_3 texto aberto + core_10_open pergunta aberta
 
 **Status**: completed

@@ -554,12 +554,14 @@ async def submit_answer(
     )
 
     # Follow-up evaluation for text answers, or select/multiselect with "outro"/"depende"
-    # Skip follow-ups entirely for dynamic phase questions
+    # Skip follow-ups entirely for dynamic phase questions and optional questions
     question_type = current.get("question_type", "text")
     answer_lower = answer.lower()
     is_dynamic_phase = updated_state.get("phase") == "dynamic"
+    is_optional_question = current.get("is_required") is False and current.get("phase") == "core"
     needs_evaluation = (
         not is_dynamic_phase
+        and not is_optional_question
         and (
             question_type == "text"
             or "outro" in answer_lower

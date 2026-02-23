@@ -4,6 +4,14 @@ from app.models.schemas import InterviewQuestion, QuestionOption
 
 CORE_QUESTIONS: list[InterviewQuestion] = [
     InterviewQuestion(
+        question_id="core_0",
+        question_text="Quer dar um nome ao seu agente de cobrança?",
+        question_type="text",
+        is_required=False,
+        phase="core",
+        context_hint="Exemplos: Sofia, Carlos, Ana. Dê um nome que represente sua marca. Se preferir, pode pular.",
+    ),
+    InterviewQuestion(
         question_id="core_1",
         question_text="O que sua empresa vende ou oferece?",
         question_type="text",

@@ -2016,7 +2016,7 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 | T27 | Refatorar perguntas dinâmicas | M5.5 | T26 | `done` |
 | T28 | Atualizar prompt de geração | M5.5 | T27 | `done` |
 | T29 | core_3 texto aberto + core_10 pergunta aberta | M5.6 | T28 | `pending` |
-| T30 | Pergunta de nome do agente | M5.7 | T29 | `pending` |
+| T30 | Pergunta de nome do agente | M5.7 | T29 | `done` |
 | T31 | Upload de foto do agente | M5.7 | T30 | `pending` |
 | T32 | Geração de avatar com API Gemini | M5.7 | T31 | `pending` |
 | T33 | Pesquisa web sobre a empresa | M5.8 | T28 | `pending` |

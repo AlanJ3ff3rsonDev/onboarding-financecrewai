@@ -30,6 +30,12 @@ def _sample_company_profile() -> dict:
 def _sample_interview_responses() -> list[dict]:
     return [
         {
+            "question_id": "core_0",
+            "question_text": "Quer dar um nome ao seu agente de cobrança?",
+            "answer": "Sofia",
+            "source": "text",
+        },
+        {
             "question_id": "core_1",
             "question_text": "O que sua empresa vende ou oferece?",
             "answer": "Software de cobrança automatizada via WhatsApp",
@@ -162,6 +168,10 @@ def test_prompt_includes_all_sections():
         _sample_interview_responses(),
     )
 
+    # Section 0: Agent identity
+    assert "Identidade do Agente" in prompt
+    assert "Sofia" in prompt
+
     # Section headings
     assert "Contexto da Empresa" in prompt
     assert "Modelo de Negócio" in prompt
@@ -201,6 +211,15 @@ def test_prompt_includes_all_sections():
     # JSON Schema present
     assert "Esquema JSON" in prompt
     assert "system_prompt" in prompt  # schema field
+
+
+def test_prompt_skips_agent_identity_when_declined():
+    """When core_0 answer is 'nao', the agent identity section is omitted."""
+    responses = _sample_interview_responses()
+    # Change core_0 answer to "nao"
+    responses[0]["answer"] = "nao"
+    prompt = build_prompt(_sample_company_profile(), responses)
+    assert "Identidade do Agente" not in prompt
 
 
 def test_prompt_handles_missing_data():

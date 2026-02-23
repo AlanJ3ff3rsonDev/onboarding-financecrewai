@@ -18,8 +18,8 @@ from app.services.interview_agent import (
 
 
 def test_core_questions_count():
-    """Exactly 15 core questions defined."""
-    assert len(CORE_QUESTIONS) == 15
+    """Exactly 16 core questions defined."""
+    assert len(CORE_QUESTIONS) == 16
 
 
 def test_core_questions_schema():
@@ -29,14 +29,16 @@ def test_core_questions_schema():
         assert q.question_id.startswith("core_")
         assert q.phase == "core"
         assert len(q.question_text) > 0
-    # All required except core_10_open
-    required_qs = [q for q in CORE_QUESTIONS if q.question_id != "core_10_open"]
+    # All required except core_0 and core_10_open
+    optional_ids = {"core_0", "core_10_open"}
+    required_qs = [q for q in CORE_QUESTIONS if q.question_id not in optional_ids]
     for q in required_qs:
         assert q.is_required is True, f"{q.question_id} should be required"
-    # core_10_open is optional
-    core_10_open = [q for q in CORE_QUESTIONS if q.question_id == "core_10_open"]
-    assert len(core_10_open) == 1
-    assert core_10_open[0].is_required is False
+    # core_0 and core_10_open are optional
+    for opt_id in optional_ids:
+        opt_q = [q for q in CORE_QUESTIONS if q.question_id == opt_id]
+        assert len(opt_q) == 1, f"{opt_id} should exist"
+        assert opt_q[0].is_required is False, f"{opt_id} should be optional"
 
 
 def test_core_questions_unique_ids():
@@ -103,30 +105,30 @@ def test_dynamic_question_bank_categories():
 
 @pytest.mark.asyncio
 async def test_create_interview():
-    """Creates interview with 15 core questions (14 remaining + 1 current)."""
+    """Creates interview with 16 core questions (15 remaining + 1 current)."""
     state = await create_interview()
     assert state["phase"] == "core"
-    assert len(state["core_questions_remaining"]) == 14
+    assert len(state["core_questions_remaining"]) == 15
     assert state["current_question"] is not None
-    assert state["current_question"]["question_id"] == "core_1"
+    assert state["current_question"]["question_id"] == "core_0"
     assert state["answers"] == []
     assert state["dynamic_questions_asked"] == 0
     assert state["max_dynamic_questions"] == 3
     assert state["needs_follow_up"] is False
     assert state["follow_up_question"] is None
-    # Total core questions: 14 remaining + 1 current = 15
-    assert len(state["core_questions_remaining"]) + 1 == 15
+    # Total core questions: 15 remaining + 1 current = 16
+    assert len(state["core_questions_remaining"]) + 1 == 16
 
 
 @pytest.mark.asyncio
 async def test_get_first_question():
-    """Returns first core question as a valid InterviewQuestion."""
+    """Returns first core question (core_0) as a valid InterviewQuestion."""
     state = await create_interview()
     question = InterviewQuestion.model_validate(state["current_question"])
-    assert question.question_id == "core_1"
+    assert question.question_id == "core_0"
     assert question.question_type == "text"
     assert question.phase == "core"
-    assert question.is_required is True
+    assert question.is_required is False
 
 
 @pytest.mark.asyncio
@@ -149,7 +151,7 @@ async def test_state_serialization():
 
 @pytest.mark.asyncio
 async def test_pre_fill_from_enrichment():
-    """If enrichment has product info, core_1 has pre_filled_value."""
+    """If enrichment has product info, core_1 has pre_filled_value (after core_0)."""
     enrichment = {
         "company_name": "TestCorp",
         "products_description": "Software de gestão financeira",
@@ -157,6 +159,10 @@ async def test_pre_fill_from_enrichment():
         "payment_methods_mentioned": "PIX e boleto",
     }
     state = await create_interview(enrichment_data=enrichment)
+    # First question is core_0 (no pre-fill)
+    assert state["current_question"]["question_id"] == "core_0"
+    # Advance to core_1 to check pre-fill
+    _, state = await get_next_question(state)
     question = InterviewQuestion.model_validate(state["current_question"])
     assert question.question_id == "core_1"
     assert question.pre_filled_value == "Software de gestão financeira"
@@ -168,20 +174,20 @@ async def test_pre_fill_from_enrichment():
 async def test_get_next_question_advances():
     """get_next_question pops the next core question from remaining."""
     state = await create_interview()
-    assert state["current_question"]["question_id"] == "core_1"
+    assert state["current_question"]["question_id"] == "core_0"
 
     question, new_state = await get_next_question(state)
     assert question is not None
-    assert question.question_id == "core_2"
-    assert len(new_state["core_questions_remaining"]) == 13
+    assert question.question_id == "core_1"
+    assert len(new_state["core_questions_remaining"]) == 14
 
 
 @pytest.mark.asyncio
 async def test_no_enrichment_no_prefill():
-    """Without enrichment data, core_1 has no pre_filled_value."""
+    """Without enrichment data, core_0 has no pre_filled_value."""
     state = await create_interview()
     question = InterviewQuestion.model_validate(state["current_question"])
-    assert question.question_id == "core_1"
+    assert question.question_id == "core_0"
     assert question.pre_filled_value is None
 
 
@@ -190,8 +196,8 @@ async def test_enrichment_prefill_core_5_tone():
     """Enrichment tone pre-fills core_5 when it becomes the current question."""
     enrichment = {"communication_tone": "amigável e casual"}
     state = await create_interview(enrichment_data=enrichment)
-    # Advance from core_1 to core_5 (4 calls to get_next_question)
-    for _ in range(4):
+    # Advance from core_0 to core_5 (5 calls to get_next_question)
+    for _ in range(5):
         _, state = await get_next_question(state)
     question = InterviewQuestion.model_validate(state["current_question"])
     assert question.question_id == "core_5"
@@ -202,7 +208,7 @@ async def test_enrichment_prefill_core_5_tone():
 
 
 def test_get_first_question_endpoint(client: TestClient) -> None:
-    """New session → GET /interview/next → returns core_1, status becomes interviewing."""
+    """New session → GET /interview/next → returns core_0, status becomes interviewing."""
     resp = client.post(
         "/api/v1/sessions",
         json={"company_name": "TestCorp", "website": "https://test.com"},
@@ -212,10 +218,10 @@ def test_get_first_question_endpoint(client: TestClient) -> None:
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["question_id"] == "core_1"
+    assert data["question_id"] == "core_0"
     assert data["phase"] == "core"
     assert data["question_type"] == "text"
-    assert data["is_required"] is True
+    assert data["is_required"] is False
     assert data["supports_audio"] is True
     assert "question_text" in data
 
@@ -252,9 +258,9 @@ def test_get_next_after_enrichment_endpoint(client: TestClient) -> None:
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["question_id"] == "core_1"
-    assert data["pre_filled_value"] == "Software de cobrança inteligente"
-    assert data["context_hint"] is not None
+    # First question is core_0 (no pre-fill from enrichment)
+    assert data["question_id"] == "core_0"
+    assert data["pre_filled_value"] is None
 
 
 def test_interview_state_persisted(client: TestClient) -> None:
@@ -294,18 +300,26 @@ async def test_submit_answer_service():
     from unittest.mock import patch, AsyncMock
 
     state = await create_interview()
-    assert state["current_question"]["question_id"] == "core_1"
+    assert state["current_question"]["question_id"] == "core_0"
 
-    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
-        next_q, new_state = await submit_answer(
-            state, "core_1", "Software de gestão", "text"
-        )
+    # Answer core_0 (optional, skips follow-up) → advances to core_1
+    next_q, new_state = await submit_answer(state, "core_0", "Sofia", "text")
     assert next_q is not None
-    assert next_q.question_id == "core_2"
+    assert next_q.question_id == "core_1"
     assert len(new_state["answers"]) == 1
-    assert new_state["answers"][0]["question_id"] == "core_1"
-    assert new_state["answers"][0]["answer"] == "Software de gestão"
-    assert new_state["answers"][0]["source"] == "text"
+    assert new_state["answers"][0]["question_id"] == "core_0"
+
+    # Answer core_1 → advances to core_2
+    with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
+        next_q2, new_state2 = await submit_answer(
+            new_state, "core_1", "Software de gestão", "text"
+        )
+    assert next_q2 is not None
+    assert next_q2.question_id == "core_2"
+    assert len(new_state2["answers"]) == 2
+    assert new_state2["answers"][1]["question_id"] == "core_1"
+    assert new_state2["answers"][1]["answer"] == "Software de gestão"
+    assert new_state2["answers"][1]["source"] == "text"
 
 
 @pytest.mark.asyncio
@@ -313,7 +327,7 @@ async def test_submit_answer_wrong_question_id():
     """submit_answer raises ValueError on question_id mismatch."""
     state = await create_interview()
     with pytest.raises(ValueError, match="mismatch"):
-        await submit_answer(state, "core_5", "wrong question", "text")
+        await submit_answer(state, "core_1", "wrong question", "text")
 
 
 def test_submit_answer_endpoint(client: TestClient) -> None:
@@ -326,8 +340,16 @@ def test_submit_answer_endpoint(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize interview
+    # Initialize interview (starts at core_0)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Answer core_0 (optional, no follow-up) → core_1
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["next_question"]["question_id"] == "core_1"
 
     # Submit answer to core_1 (mock follow-up to skip evaluation)
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
@@ -342,7 +364,7 @@ def test_submit_answer_endpoint(client: TestClient) -> None:
 
 
 def test_submit_answer_chain(client: TestClient) -> None:
-    """Submit answers to core_1 through core_3 — each returns next question."""
+    """Submit answers to core_0 through core_3 — each returns next question."""
     from unittest.mock import patch, AsyncMock
 
     resp = client.post(
@@ -351,8 +373,16 @@ def test_submit_answer_chain(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize interview
+    # Initialize interview (starts at core_0)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
+
+    # Answer core_0 (optional, no mock needed)
+    resp = client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["next_question"]["question_id"] == "core_1"
 
     answers = [
         ("core_1", "Software de cobrança"),
@@ -384,8 +414,14 @@ def test_answer_stored_in_session(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize and answer (mock follow-up to skip evaluation)
+    # Initialize and answer core_0 first (optional)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
+    client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    )
+
+    # Answer core_1 (mock follow-up to skip evaluation)
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
         client.post(
             f"/api/v1/sessions/{session_id}/interview/answer",
@@ -396,14 +432,15 @@ def test_answer_stored_in_session(client: TestClient) -> None:
     session_resp = client.get(f"/api/v1/sessions/{session_id}")
     session_data = session_resp.json()
     responses = session_data["interview_responses"]
-    assert len(responses) == 1
-    assert responses[0]["question_id"] == "core_1"
-    assert responses[0]["answer"] == "Financiamento automotivo"
-    assert responses[0]["source"] == "text"
+    assert len(responses) == 2
+    assert responses[0]["question_id"] == "core_0"
+    assert responses[1]["question_id"] == "core_1"
+    assert responses[1]["answer"] == "Financiamento automotivo"
+    assert responses[1]["source"] == "text"
 
-    # Also check interview_state has the answer
+    # Also check interview_state has the answers
     state = session_data["interview_state"]
-    assert len(state["answers"]) == 1
+    assert len(state["answers"]) == 2
     assert state["current_question"]["question_id"] == "core_2"
 
 
@@ -415,10 +452,10 @@ def test_wrong_question_id_endpoint(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize interview (current = core_1)
+    # Initialize interview (current = core_0)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
 
-    # Submit answer for core_5 instead of core_1
+    # Submit answer for core_5 instead of core_0
     resp = client.post(
         f"/api/v1/sessions/{session_id}/interview/answer",
         json={"question_id": "core_5", "answer": "wrong question", "source": "text"},
@@ -475,6 +512,8 @@ async def test_short_answer_triggers_follow_up():
     from unittest.mock import patch
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
     assert state["current_question"]["question_id"] == "core_1"
 
     mock_response = json.dumps({
@@ -496,8 +535,8 @@ async def test_short_answer_triggers_follow_up():
     assert next_q.question_type == "text"
     assert new_state["needs_follow_up"] is True
     assert new_state["follow_up_count"] == 1
-    assert len(new_state["answers"]) == 1
-    assert new_state["answers"][0]["answer"] == "sim"
+    assert len(new_state["answers"]) == 2  # core_0 + core_1
+    assert new_state["answers"][1]["answer"] == "sim"
 
 
 @pytest.mark.asyncio
@@ -506,6 +545,8 @@ async def test_detailed_answer_no_follow_up():
     from unittest.mock import patch
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     mock_response = json.dumps({
         "needs_follow_up": False,
@@ -535,6 +576,8 @@ async def test_follow_up_answer_stored():
     from unittest.mock import patch
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     # First: short answer triggers follow-up
     fu_response = json.dumps({
@@ -550,7 +593,7 @@ async def test_follow_up_answer_stored():
             next_q, state2 = await submit_answer(state, "core_1", "sim", "text")
 
     assert next_q.question_id == "followup_core_1_1"
-    assert len(state2["answers"]) == 1
+    assert len(state2["answers"]) == 2  # core_0 + core_1
 
     # Second: answer the follow-up with detail → no more follow-up, advance to core_2
     no_fu_response = json.dumps({
@@ -571,9 +614,9 @@ async def test_follow_up_answer_stored():
 
     assert next_q2 is not None
     assert next_q2.question_id == "core_2"
-    assert len(state3["answers"]) == 2
-    assert state3["answers"][0]["question_id"] == "core_1"
-    assert state3["answers"][1]["question_id"] == "followup_core_1_1"
+    assert len(state3["answers"]) == 3  # core_0 + core_1 + followup
+    assert state3["answers"][1]["question_id"] == "core_1"
+    assert state3["answers"][2]["question_id"] == "followup_core_1_1"
     assert state3["follow_up_count"] == 0
     assert state3["needs_follow_up"] is False
 
@@ -584,6 +627,8 @@ async def test_max_follow_ups():
     from unittest.mock import patch
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     # Simulate 2 follow-ups already done
     fu_response = json.dumps({
@@ -632,6 +677,8 @@ async def test_select_question_no_follow_up():
     from unittest.mock import patch, AsyncMock
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     # Advance to core_5 (select type) — answer core_1 through core_4 first without follow-ups
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
@@ -665,10 +712,16 @@ def test_follow_up_endpoint_response(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize interview
+    # Initialize interview (starts at core_0)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
 
-    # Mock OpenAI to trigger follow-up
+    # Answer core_0 first (optional, no follow-up)
+    client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    )
+
+    # Mock OpenAI to trigger follow-up on core_1
     fu_response = json.dumps({
         "needs_follow_up": True,
         "follow_up_question": "Pode descrever melhor seus produtos?",
@@ -700,6 +753,8 @@ async def test_select_depende_triggers_follow_up():
     from unittest.mock import patch, AsyncMock
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     # Advance to core_5 (select type) — answer core_1 through core_4 first without follow-ups
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
@@ -738,6 +793,8 @@ async def test_multiselect_with_outro_triggers_follow_up():
     from unittest.mock import patch, AsyncMock
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     # Answer core_1 (text) without follow-up to advance
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up", new_callable=AsyncMock, return_value=(False, None)):
@@ -773,6 +830,8 @@ async def test_frustration_signal_skips_follow_up():
     from unittest.mock import patch
 
     state = await create_interview()
+    # Answer core_0 first (optional, no follow-up)
+    _, state = await submit_answer(state, "core_0", "Sofia", "text")
 
     mock_response = json.dumps({
         "needs_follow_up": True,
@@ -862,11 +921,15 @@ from app.services.interview_agent import (
 def _dynamic_state(**overrides) -> InterviewState:
     """Build an InterviewState in dynamic phase for testing."""
     core_answers = [
+        {"question_id": "core_0", "answer": "Sofia",
+         "source": "text", "question_text": "Quer dar um nome ao seu agente de cobrança?"},
+    ]
+    core_answers.extend([
         {"question_id": f"core_{i}", "answer": f"Resposta {i}",
          "source": "text", "question_text": f"Pergunta {i}"}
         for i in range(1, 15)
-    ]
-    core_answers.insert(10, {
+    ])
+    core_answers.insert(11, {
         "question_id": "core_10_open",
         "answer": "Quando o cliente é empresa parceira estratégica",
         "source": "text",
@@ -890,7 +953,7 @@ def _dynamic_state(**overrides) -> InterviewState:
 
 @pytest.mark.asyncio
 async def test_dynamic_phase_starts():
-    """After all 15 core questions answered, get_next_question enters dynamic phase."""
+    """After all 16 core questions answered, get_next_question enters dynamic phase."""
     from unittest.mock import AsyncMock, patch
 
     # State with 1 core question remaining (core_14) — simulate answering it
@@ -899,11 +962,15 @@ async def test_dynamic_phase_starts():
     # Fast-forward to core_14: empty the remaining list except last
     last_q = CORE_QUESTIONS[-1].model_dump()
     prev_answers = [
+        {"question_id": "core_0", "answer": "Sofia",
+         "source": "text", "question_text": "Quer dar um nome ao seu agente?"},
+    ]
+    prev_answers.extend([
         {"question_id": f"core_{i}", "answer": f"Resp {i}",
          "source": "text", "question_text": f"Q{i}"}
         for i in range(1, 14)
-    ]
-    prev_answers.insert(10, {
+    ])
+    prev_answers.insert(11, {
         "question_id": "core_10_open",
         "answer": "Não",
         "source": "text",
@@ -944,7 +1011,7 @@ async def test_dynamic_phase_starts():
     assert next_q.phase == "dynamic"
     assert new_state["phase"] == "dynamic"
     assert new_state["dynamic_questions_asked"] == 1
-    assert len(new_state["answers"]) == 15
+    assert len(new_state["answers"]) == 16
 
 
 @pytest.mark.asyncio
@@ -1132,6 +1199,48 @@ async def test_dynamic_answer_triggers_completeness_eval():
     assert next_q.phase == "dynamic"
 
 
+# ---------- T30: core_0 agent name question ----------
+
+
+@pytest.mark.asyncio
+async def test_core_0_is_first_question():
+    """core_0 is the very first question in the interview."""
+    state = await create_interview()
+    assert state["current_question"]["question_id"] == "core_0"
+    assert state["current_question"]["is_required"] is False
+    assert state["current_question"]["question_type"] == "text"
+    # Verify it's first in CORE_QUESTIONS list
+    assert CORE_QUESTIONS[0].question_id == "core_0"
+
+
+@pytest.mark.asyncio
+async def test_core_0_optional_skips_follow_up():
+    """core_0 is optional — answering it skips follow-up evaluation (LLM not called)."""
+    from unittest.mock import patch
+
+    state = await create_interview()
+    assert state["current_question"]["question_id"] == "core_0"
+
+    mock_response = json.dumps({
+        "needs_follow_up": True,
+        "follow_up_question": "Pode explicar melhor o nome?",
+        "reason": "Curto",
+    })
+    mock_client = _mock_openai_response(mock_response)
+
+    with patch("app.services.interview_agent.AsyncOpenAI", return_value=mock_client):
+        with patch("app.services.interview_agent.settings") as mock_settings:
+            mock_settings.OPENAI_API_KEY = "test-key"
+            next_q, new_state = await submit_answer(state, "core_0", "Sofia", "text")
+
+    # Should advance to core_1 without follow-up (optional question)
+    assert next_q is not None
+    assert next_q.question_id == "core_1"
+    assert new_state["needs_follow_up"] is False
+    # LLM should NOT have been called (optional question skips evaluation)
+    mock_client.chat.completions.create.assert_not_called()
+
+
 # ---------- T14: Interview progress endpoint + completion ----------
 
 
@@ -1149,9 +1258,9 @@ def test_progress_not_started(client: TestClient) -> None:
     assert data["phase"] == "not_started"
     assert data["total_answered"] == 0
     assert data["core_answered"] == 0
-    assert data["core_total"] == 15
+    assert data["core_total"] == 16
     assert data["dynamic_answered"] == 0
-    assert data["estimated_remaining"] == 15
+    assert data["estimated_remaining"] == 16
     assert data["is_complete"] is False
 
 
@@ -1165,10 +1274,14 @@ def test_progress_midway(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Initialize interview
+    # Initialize interview (starts at core_0)
     client.get(f"/api/v1/sessions/{session_id}/interview/next")
 
-    # Answer core_1 and core_2
+    # Answer core_0 (optional), core_1 and core_2
+    client.post(
+        f"/api/v1/sessions/{session_id}/interview/answer",
+        json={"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    )
     with patch("app.services.interview_agent.evaluate_and_maybe_follow_up",
                new_callable=AsyncMock, return_value=(False, None)):
         client.post(
@@ -1184,9 +1297,9 @@ def test_progress_midway(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["phase"] == "core"
-    assert data["core_answered"] == 2
-    assert data["core_total"] == 15
-    assert data["total_answered"] == 2
+    assert data["core_answered"] == 3
+    assert data["core_total"] == 16
+    assert data["total_answered"] == 3
     assert data["dynamic_answered"] == 0
     assert data["estimated_remaining"] > 0
     assert data["is_complete"] is False
@@ -1205,7 +1318,7 @@ def test_progress_during_follow_up(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Simulate: core_1 answered, currently on followup_core_1_1 (remaining has 14 items = core_2..core_14 + core_10_open)
+    # Simulate: core_0 + core_1 answered, currently on followup_core_1_1 (remaining has 14 items = core_2..core_14 + core_10_open)
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     remaining = [
@@ -1229,6 +1342,7 @@ def test_progress_during_follow_up(client: TestClient) -> None:
             "is_required": False, "supports_audio": True, "phase": "follow_up", "context_hint": None,
         },
         "answers": [
+            {"question_id": "core_0", "answer": "Sofia", "source": "text", "question_text": "Nome do agente"},
             {"question_id": "core_1", "answer": "Software", "source": "text", "question_text": "Q1"},
         ],
         "dynamic_questions_asked": 0,
@@ -1247,9 +1361,9 @@ def test_progress_during_follow_up(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["phase"] == "core"
-    # core_1 was answered (popped from remaining), follow-up is current — should count as 1
-    assert data["core_answered"] == 1
-    assert data["total_answered"] == 1
+    # core_0 + core_1 answered (popped from remaining), follow-up is current — should count as 2
+    assert data["core_answered"] == 2
+    assert data["total_answered"] == 2
 
 
 def test_progress_review_phase(client: TestClient) -> None:
@@ -1269,11 +1383,15 @@ def test_progress_review_phase(client: TestClient) -> None:
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     answers = [
+        {"question_id": "core_0", "answer": "Sofia",
+         "source": "text", "question_text": "Nome do agente"},
+    ]
+    answers.extend([
         {"question_id": f"core_{i}", "answer": f"Resp {i}",
          "source": "text", "question_text": f"Q{i}"}
         for i in range(1, 15)
-    ]
-    answers.insert(10, {
+    ])
+    answers.insert(11, {
         "question_id": "core_10_open",
         "answer": "Não",
         "source": "text",
@@ -1300,9 +1418,9 @@ def test_progress_review_phase(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["phase"] == "review"
-    assert data["core_answered"] == 15
+    assert data["core_answered"] == 16
     assert data["dynamic_answered"] == 2
-    assert data["total_answered"] == 15
+    assert data["total_answered"] == 16
     assert data["estimated_remaining"] == 0
     assert data["is_complete"] is True
 
@@ -1336,11 +1454,15 @@ def _session_in_review_phase(client: TestClient) -> str:
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     answers = [
+        {"question_id": "core_0", "answer": "Sofia",
+         "source": "text", "question_text": "Nome do agente"},
+    ]
+    answers.extend([
         {"question_id": f"core_{i}", "answer": f"Resp {i}",
          "source": "text", "question_text": f"Q{i}"}
         for i in range(1, 15)
-    ]
-    answers.insert(10, {
+    ])
+    answers.insert(11, {
         "question_id": "core_10_open",
         "answer": "Não",
         "source": "text",
@@ -1360,10 +1482,13 @@ def _session_in_review_phase(client: TestClient) -> str:
     }
     session.interview_state = serialize_state(state)
     interview_responses = [
+        {"question_id": "core_0", "answer": "Sofia", "source": "text"},
+    ]
+    interview_responses.extend([
         {"question_id": f"core_{i}", "answer": f"Resp {i}", "source": "text"}
         for i in range(1, 15)
-    ]
-    interview_responses.insert(10, {
+    ])
+    interview_responses.insert(11, {
         "question_id": "core_10_open", "answer": "Não", "source": "text",
     })
     session.interview_responses = interview_responses
@@ -1381,7 +1506,7 @@ def test_get_review(client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert data["confirmed"] is False
-    assert len(data["answers"]) == 15
+    assert len(data["answers"]) == 16
     assert isinstance(data["enrichment"], dict)
 
 
@@ -1440,16 +1565,16 @@ def test_review_wrong_phase(client: TestClient) -> None:
     )
     session_id = resp.json()["session_id"]
 
-    # Set interview_state to core phase
+    # Set interview_state to core phase (at core_0)
     db = next(app.dependency_overrides[get_db]())
     session = db.get(OnboardingSession, session_id)
     remaining = [
         {"question_id": f"core_{i}", "question_text": f"Q{i}",
          "question_type": "text", "options": None, "pre_filled_value": None,
          "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None}
-        for i in range(2, 15)
+        for i in range(1, 15)
     ]
-    remaining.insert(9, {
+    remaining.insert(10, {
         "question_id": "core_10_open", "question_text": "Escalação adicional",
         "question_type": "text", "options": None, "pre_filled_value": None,
         "is_required": False, "supports_audio": True, "phase": "core", "context_hint": None,
@@ -1458,9 +1583,9 @@ def test_review_wrong_phase(client: TestClient) -> None:
         "enrichment_data": {},
         "core_questions_remaining": remaining,
         "current_question": {
-            "question_id": "core_1", "question_text": "Q1",
+            "question_id": "core_0", "question_text": "Nome do agente",
             "question_type": "text", "options": None, "pre_filled_value": None,
-            "is_required": True, "supports_audio": True, "phase": "core", "context_hint": None,
+            "is_required": False, "supports_audio": True, "phase": "core", "context_hint": None,
         },
         "answers": [],
         "dynamic_questions_asked": 0,
