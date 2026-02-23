@@ -49,6 +49,7 @@ Track important decisions made during development that deviate from or clarify t
 |------|----------|--------|--------|
 | 2026-02-22 | Refactored financial questions from select to open-ended text (core_6/7/8/9). Removed SmartDefaults entirely. Replaced NegotiationPolicies numeric fields with text descriptions. Replaced "defaults" interview phase with "review" phase. | Specific financial values (discount %, interest rate, penalty %, installment count) are campaign-level configuration, not onboarding-level. Onboarding captures the company's macro collection methodology. | 10 tests removed (SmartDefaults/numeric), 8 tests added (review/text-based). 120→116 total tests. All schemas, prompts, services, routers, and tests updated. |
 | 2026-02-22 | M5.5: Refactored question system. Core 12→14 questions. Max dynamic 8→3. Follow-ups disabled for dynamic phase. Frustration detection added. Question bank cleaned up. Agent generator now instructs LLM that agent is expert. | Agent already knows collection best practices — onboarding should only capture company-specific information. Generic questions and aggressive follow-ups were making the experience frustrating. | 116→118 tests. Tasks renumbered: old T26-T36 → T29-T39. |
+| 2026-02-22 | Planned M5.6-M5.9: 6 new tasks (T29-T34). core_3→text, core_10_open, agent name (core_0), avatar upload+generation (Gemini), web research in enrichment, OnboardingReport SOP replacing AgentConfig/system_prompt. | User feedback: output should be a structured SOP report for downstream consumption, not a ready-to-use system_prompt. Agent needs identity (name+avatar). Enrichment should include web search beyond website scraping. | Tasks renumbered: old T29-T39 → T35-T45. PRD, tech_design, tasks.md updated. |
 | 2026-02-20 | Removed contact hours from SmartDefaults and AgentConfig (contact_hours_weekday, contact_hours_saturday, contact_sunday, ContactHours schema) | In the final solution, messages are always available — timing is user-controlled, not agent-controlled. These fields would be unnecessary questions. | SmartDefaults: 11→8 fields. Guardrails: removed contact_hours. Removed _validate_contact_hours(). Removed test_defaults_validation_hours. 85→84 tests. |
 | 2026-02-19 | Expanded core questions from 10 to 12: added juros (core_8) and multa (core_9) | User feedback: not all businesses charge interest/fines — need explicit "none" option | All task refs updated (T09, T25). core_6 changed from slider to select. IDs renumbered: old 8/9/10 → 10/11/12 |
 | 2026-02-20 | T13 uses async helper functions instead of formal LangGraph nodes for dynamic question generation and completeness evaluation | Matches T12 pattern (follow-up evaluation). Adding async nodes to synchronous LangGraph graphs would require significant refactoring. Helpers achieve identical functionality. | Task DoD says "adds nodes" but `generate_dynamic_question()` and `evaluate_interview_completeness()` serve the same purpose as nodes would. |
@@ -66,6 +67,41 @@ Track bugs or problems that need attention but aren't blocking current work.
 ---
 
 ## Development Log
+
+### 2026-02-22 — Planning: M5.6-M5.9 (T29-T34) — Melhorias de Perguntas, Personalização, Pesquisa Web, Relatório SOP
+
+**Status**: completed (planning only, no code changes)
+
+**What was done**:
+- Planejamento detalhado de 6 novas tasks em 4 milestones (M5.6-M5.9) com base em feedback do usuário
+- Atualizou `docs/tasks.md`: inseriu T29-T34 com detalhamento completo (objective, files, changes, tests, DoD)
+- Renumerou tasks existentes: T29-T39 → T35-T45 (offset +6)
+- Atualizou milestone overview table e task summary table
+- Atualizou `docs/PRD.md`: novas features (web research, agent identity, SOP), user flow, question count, status table
+- Atualizou `docs/tech_design.md`: novos endpoints, schemas, services, API keys, data model, design decisions
+- Atualizou `cli_test.py`: 12→14 perguntas, defaults→review, negotiation policies text-based
+
+**Tasks criadas**:
+- **T29** (M5.6): core_3 → texto aberto + core_10_open (pergunta aberta de escalação)
+- **T30** (M5.7): Pergunta de nome do agente (core_0, opcional)
+- **T31** (M5.7): Upload de foto do agente (PNG/JPG/WebP, max 5MB)
+- **T32** (M5.7): Geração de avatar com API Gemini (2 opções por gênero, profissional)
+- **T33** (M5.8): Pesquisa web sobre a empresa no enrichment (Serper API + LLM consolidação)
+- **T34** (M5.9): OnboardingReport SOP substituindo AgentConfig/system_prompt (maior mudança)
+
+**Key architectural decisions**:
+1. **SOP em vez de system_prompt**: Output final é um relatório JSON estruturado (OnboardingReport) com campos descritivos + expert_recommendations. Outro sistema downstream criará o system_prompt.
+2. **Pesquisa web**: Enrichment agora faz scraping do site + buscas web. WebResearchResult armazenado junto com CompanyProfile.
+3. **Identidade do agente**: Nome (core_0) + avatar (upload ou geração Gemini). Dados entram no OnboardingReport.
+4. **core_10_open**: ID "core_10_open" em vez de renumerar para evitar quebrar referências.
+
+**Issues found**:
+- None (planning only)
+
+**Next steps**:
+- Implementar T29 (core_3 texto aberto + core_10_open)
+
+---
 
 ### 2026-02-22 — M5.5 (T26-T28): Refatoração do Sistema de Perguntas
 

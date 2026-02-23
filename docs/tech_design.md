@@ -6,7 +6,7 @@
 |-------|-------|
 | **Status** | Active |
 | **Created** | 2026-02-19 |
-| **Updated** | 2026-02-20 |
+| **Updated** | 2026-02-22 |
 | **PRD Reference** | `docs/PRD.md` |
 
 ---
@@ -32,6 +32,8 @@
 | Service | Key | Purpose |
 |---------|-----|---------|
 | **OpenAI** | `OPENAI_API_KEY` | All LLM calls + transcription |
+| **Google** | `GOOGLE_API_KEY` | Gemini API — avatar image generation (T32) |
+| **Search** | `SEARCH_API_KEY` | Web search API (Serper/Google CSE) — company research (T33) |
 
 ---
 
@@ -55,22 +57,24 @@ backend/
 │   ├── routers/
 │   │   ├── sessions.py            # POST /sessions, GET /sessions/{id}
 │   │   ├── enrichment.py          # POST /enrich, GET /enrichment
-│   │   ├── interview.py           # GET /next, POST /answer, GET /progress, GET/POST /defaults
+│   │   ├── interview.py           # GET /next, POST /answer, GET /progress, GET/POST /review
 │   │   ├── audio.py               # POST /transcribe
 │   │   ├── agent.py               # POST /generate, GET /agent, PUT /adjust
 │   │   └── simulation.py          # POST /generate, GET /simulation
 │   │
 │   ├── services/
 │   │   ├── enrichment.py          # scrape_website() + extract_company_profile()
+│   │   ├── web_research.py        # search_company() — web search enrichment (T33)
 │   │   ├── interview_agent.py     # LangGraph state machine (InterviewState)
-│   │   ├── agent_generator.py     # generate_agent_config() + adjust_agent_config()
+│   │   ├── report_generator.py    # generate_report() — OnboardingReport SOP (T34, replaces agent_generator)
+│   │   ├── avatar_generator.py    # generate_avatar() — Gemini image generation (T32)
 │   │   ├── simulation.py          # generate_simulation()
 │   │   └── transcription.py       # transcribe_audio()
 │   │
 │   └── prompts/
 │       ├── enrichment.py          # Website extraction prompt
 │       ├── interview.py           # Core questions, dynamic bank, follow-up prompts
-│       ├── agent_generator.py     # Agent config generation prompt
+│       ├── report_generator.py    # OnboardingReport SOP generation prompt (T34, replaces agent_generator)
 │       └── simulation.py          # Simulation conversation prompt
 │
 └── tests/
@@ -85,7 +89,7 @@ backend/
     └── test_integration.py        # 1 test (real OpenAI API, @pytest.mark.integration)
 ```
 
-**Total: 120 tests passing** (119 unit + 1 integration)
+**Total: 118 tests passing** (116 unit + 1 integration + 1 pending update for T29-T34)
 
 ---
 
@@ -103,8 +107,8 @@ backend/
 | `enrichment_data` | JSON | CompanyProfile from enrichment |
 | `interview_state` | JSON | LangGraph state (questions, answers, phase) |
 | `interview_responses` | JSON | Clean list of all Q&A pairs |
-| `smart_defaults` | JSON | Confirmed default settings (8 fields) |
-| `agent_config` | JSON | Generated AgentConfig (versioned) |
+| `agent_avatar_path` | TEXT (nullable) | Path to agent avatar image (T31) |
+| `agent_config` | JSON | Generated OnboardingReport SOP (T34, replaces AgentConfig) |
 | `simulation_result` | JSON | 2 simulated conversations |
 | `created_at` | DATETIME | Session creation timestamp |
 | `updated_at` | DATETIME | Last modification timestamp |
@@ -136,8 +140,8 @@ Base path: `/api/v1`
 | `GET` | `/sessions/{id}/interview/next` | Get next question | — | InterviewQuestion or `{ phase, message }` |
 | `POST` | `/sessions/{id}/interview/answer` | Submit answer | `{ question_id, answer, source }` | `{ received, next_question, follow_up? }` |
 | `GET` | `/sessions/{id}/interview/progress` | Progress status | — | `{ phase, core_answered, dynamic_answered, is_complete }` |
-| `GET` | `/sessions/{id}/interview/defaults` | Get defaults | — | `{ defaults: SmartDefaults, confirmed }` |
-| `POST` | `/sessions/{id}/interview/defaults` | Confirm defaults | SmartDefaults | `{ confirmed, defaults, phase: "complete" }` |
+| `GET` | `/sessions/{id}/interview/review` | Get review summary | — | `{ summary, confirmed }` |
+| `POST` | `/sessions/{id}/interview/review` | Confirm review | `{ additional_notes? }` | `{ confirmed, phase: "complete" }` |
 
 ### Audio
 
@@ -149,9 +153,11 @@ Base path: `/api/v1`
 
 | Method | Path | Description | Request | Response |
 |--------|------|-------------|---------|----------|
-| `POST` | `/sessions/{id}/agent/generate` | Generate config | — | `{ status: "generated", agent_config }` |
-| `GET` | `/sessions/{id}/agent` | Get config | — | AgentConfig JSON |
-| `PUT` | `/sessions/{id}/agent/adjust` | Adjust + regenerate | `{ adjustments: { "dotted.path": value } }` | `{ status: "adjusted", agent_config }` |
+| `POST` | `/sessions/{id}/agent/generate` | Generate SOP report | — | `{ status: "generated", onboarding_report }` |
+| `GET` | `/sessions/{id}/agent` | Get report | — | OnboardingReport JSON |
+| `POST` | `/sessions/{id}/agent/avatar/upload` | Upload avatar | Multipart file | `{ avatar_url }` |
+| `POST` | `/sessions/{id}/agent/avatar/generate` | Generate 2 avatar options (Gemini) | — | `{ options: [{ id, url }] }` |
+| `POST` | `/sessions/{id}/agent/avatar/select` | Select avatar option | `{ option_id }` | `{ avatar_url }` |
 
 ### Simulation
 
@@ -180,7 +186,7 @@ These are the exact JSON shapes returned by the API. The frontend must use these
   "pre_filled_value": "string ou null",
   "is_required": true,
   "supports_audio": true,
-  "phase": "core | dynamic | follow_up | defaults",
+  "phase": "core | dynamic | follow_up | review",
   "context_hint": "string ou null"
 }
 ```
@@ -208,8 +214,8 @@ When no next question:
 {
   "received": true,
   "next_question": null,
-  "phase": "defaults | dynamic",
-  "message": "Entrevista concluída. Prossiga para confirmação dos padrões."
+  "phase": "review | dynamic",
+  "message": "Entrevista concluída. Prossiga para revisão."
 }
 ```
 
@@ -217,7 +223,7 @@ When no next question:
 
 ```json
 {
-  "phase": "not_started | core | dynamic | defaults | complete",
+  "phase": "not_started | core | dynamic | review | complete",
   "total_answered": 14,
   "core_answered": 12,
   "core_total": 12,
@@ -241,74 +247,80 @@ When no next question:
 }
 ```
 
-### SmartDefaults
+### Interview Review
 
 ```json
 {
-  "follow_up_interval_days": 3,
-  "max_contact_attempts": 10,
-  "use_first_name": true,
-  "identify_as_ai": true,
-  "min_installment_value": 50.0,
-  "discount_strategy": "only_when_resisted | proactive | escalating",
-  "payment_link_generation": true,
-  "max_discount_installment_pct": 5.0
+  "summary": {
+    "core_0": "Sofia",
+    "core_1": "Plataforma SaaS de cobrança automatizada",
+    "core_2": "pix,boleto,cartao_credito",
+    "...": "..."
+  },
+  "confirmed": false
 }
 ```
 
-Validation: `follow_up_interval_days >= 1`, `max_contact_attempts >= 1`, `min_installment_value >= 0`, `max_discount_installment_pct` 0-50.
-
-### AgentConfig
+### OnboardingReport (planned — T34, replaces AgentConfig)
 
 ```json
 {
-  "agent_type": "compliant | non_compliant",
-  "company_context": {
-    "name": "string",
-    "segment": "string",
-    "products": "string",
-    "target_audience": "string"
+  "agent_identity": {
+    "name": "Sofia",
+    "avatar_url": "/uploads/avatars/session-id.png"
   },
-  "system_prompt": "string (>200 chars, full prompt for the collection agent)",
-  "tone": {
-    "style": "formal | friendly | empathetic | assertive",
-    "use_first_name": true,
-    "prohibited_words": ["ameaçar", "processar"],
-    "preferred_words": ["resolver", "parceria"],
-    "opening_message_template": "string"
+  "company": {
+    "name": "CollectAI",
+    "segment": "Fintech / SaaS de cobrança",
+    "products": "Plataforma de cobrança automatizada via WhatsApp",
+    "target_audience": "PMEs brasileiras",
+    "website": "collectai.com.br"
   },
-  "negotiation_policies": {
-    "max_discount_full_payment_pct": 10.0,
-    "max_discount_installment_pct": 5.0,
-    "max_installments": 12,
-    "min_installment_value_brl": 50.0,
-    "discount_strategy": "only_when_resisted | proactive | escalating",
-    "payment_methods": ["pix", "boleto"],
-    "can_generate_payment_link": true
+  "enrichment_summary": {
+    "website_analysis": "Resumo do scraping do site...",
+    "web_research": "Resumo da pesquisa web..."
+  },
+  "collection_profile": {
+    "debt_type": "Recorrente (mensalidades SaaS)",
+    "typical_debtor_profile": "PMEs com faturamento...",
+    "business_specific_objections": "Serviço não foi entregue conforme...",
+    "payment_verification_process": "Conferimos no ERP...",
+    "sector_regulations": "LGPD limita exposição de dados..."
+  },
+  "collection_policies": {
+    "overdue_definition": "Até 5 dias lembrete amigável, 5-30 cobrança firme...",
+    "discount_policy": "Até 10% para pagamento à vista...",
+    "installment_policy": "Parcelamos em até 12x, mínimo R$50...",
+    "interest_policy": "Juros de 1% ao mês...",
+    "penalty_policy": "Multa de 2% sobre o valor...",
+    "payment_methods": ["pix", "boleto", "cartao_credito"],
+    "escalation_triggers": ["solicita_humano", "acao_judicial", "agressivo"],
+    "escalation_custom_rules": "Quando o cliente é empresa parceira...",
+    "collection_flow_description": "Primeiro envio de lembrete por WhatsApp..."
+  },
+  "communication": {
+    "tone_style": "friendly",
+    "prohibited_actions": ["Ameaçar", "Expor a dívida a terceiros"],
+    "brand_specific_language": "Usar 'parceiro' em vez de 'devedor'..."
   },
   "guardrails": {
-    "never_do": ["Ameaçar o devedor", "Revelar dados de terceiros"],
+    "never_do": ["Ameaçar o devedor"],
     "never_say": ["processo", "cadeia"],
-    "escalation_triggers": ["Devedor solicita humano", "Dívida alta"],
+    "must_identify_as_ai": true,
     "follow_up_interval_days": 3,
-    "max_attempts_before_stop": 10,
-    "must_identify_as_ai": true
+    "max_attempts_before_stop": 10
   },
-  "scenario_responses": {
-    "already_paid": "string — como responder quando devedor diz que já pagou",
-    "dont_recognize_debt": "string — quando não reconhece a dívida",
-    "cant_pay_now": "string — quando não pode pagar agora",
-    "aggressive_debtor": "string — quando devedor é agressivo"
-  },
-  "tools": ["generate_payment_link", "check_payment_status"],
+  "expert_recommendations": "Análise detalhada (300+ palavras) de um especialista em cobrança sobre o processo ideal para esta empresa...",
   "metadata": {
-    "version": 1,
-    "generated_at": "2026-02-20T10:30:00",
-    "onboarding_session_id": "uuid",
-    "generation_model": "gpt-4.1-mini"
+    "generated_at": "2026-02-22T10:30:00",
+    "session_id": "uuid",
+    "model": "gpt-4.1-mini",
+    "version": 1
   }
 }
 ```
+
+This replaces the old AgentConfig. Key difference: `expert_recommendations` is a comprehensive SOP analysis, not a system_prompt. A downstream system will use this report to create the actual agent.
 
 ### SimulationResult
 
@@ -335,19 +347,17 @@ Validation: `follow_up_interval_days >= 1`, `max_contact_attempts >= 1`, `min_in
 }
 ```
 
-### AgentAdjustRequest
+### WebResearchResult (planned — T33)
 
 ```json
 {
-  "adjustments": {
-    "tone.style": "empathetic",
-    "negotiation_policies.max_discount_full_payment_pct": 20,
-    "guardrails.must_identify_as_ai": false
-  }
+  "company_description": "CollectAI é uma fintech de cobrança...",
+  "products_and_services": "Plataforma SaaS de automação de cobrança...",
+  "sector_context": "Mercado de cobrança digital em crescimento...",
+  "reputation_summary": "Avaliações positivas no Google, sem reclamações no Reclame Aqui...",
+  "collection_relevant_insights": "Foco em recuperação amigável, sem cobrança judicial..."
 }
 ```
-
-Uses dotted-path notation. Only text-derived fields (`system_prompt`, `scenario_responses`, `tone.opening_message_template`) are regenerated by LLM; all others are applied directly.
 
 ### Swagger / OpenAPI
 
@@ -376,28 +386,49 @@ website URL + company name
 
 **Flow**:
 ```
-initialize → 12 core questions (with up to 2 follow-ups each)
-  → dynamic phase (LLM generates questions, evaluates completeness)
-  → defaults phase (user confirms/adjusts)
+initialize → 16 core questions (with up to 2 follow-ups each, no follow-ups on dynamic)
+  → dynamic phase (LLM generates up to 3 questions, evaluates completeness)
+  → review phase (user confirms answers + optional notes)
   → complete
 ```
 
 **Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — applied at pop time.
 
-### 6.3 Agent Generator
+**Frustration detection**: Hardcoded signals (13 Portuguese phrases) skip follow-up without LLM call.
+
+### 6.3 Web Research Service (planned — T33)
 
 ```
-CompanyProfile + interview_responses + smart_defaults
-  → build_prompt() — 8 sections + mapping hints + JSON schema
-  → GPT-4.1-mini structured output → AgentConfig
-  → Sanity checks: discount caps, prompt quality (>200 chars), range clamping
+company_name + website
+  → Search API (Serper) — 2-3 queries about the company
+  → Collect top snippets
+  → LLM consolidation → WebResearchResult
+  → Combined with CompanyProfile in enrichment_data
+```
+
+### 6.4 Report Generator (planned — T34, replaces Agent Generator)
+
+```
+CompanyProfile + WebResearchResult + interview_responses + agent_name + avatar_url
+  → build_prompt() — enrichment sections + all interview answers
+  → GPT-4.1-mini structured output → OnboardingReport (SOP)
+  → Includes expert_recommendations (300+ words)
   → 2-attempt retry
 ```
 
-### 6.4 Simulation Service
+### 6.5 Avatar Generator (planned — T32)
 
 ```
-AgentConfig → build_simulation_prompt() — system prompt + 8 config sections + scenario instructions
+agent_name → detect gender (heuristic for Brazilian names)
+  → Gemini API → 2 realistic avatar images (light/dark skin, professional attire)
+  → Save to uploads/avatars/
+  → User selects one
+```
+
+### 6.6 Simulation Service
+
+```
+OnboardingReport → build_simulation_prompt() — SOP data + scenario instructions
   → GPT-4.1-mini → SimulationResult (2 scenarios, 8-15 msgs each)
   → Sanity checks (non-fatal): scenario count, conversation length
   → 2-attempt retry
@@ -468,9 +499,9 @@ app.add_middleware(
 ### Tela Flow
 
 ```
-[Boas-vindas] → [Enriquecimento] → [Entrevista] → [Defaults] → [Agente] → [Simulação]
-     POST           POST+GET        GET+POST loop   GET+POST     POST+GET    POST+GET
-    /sessions       /enrich         /interview/*     /defaults    /agent/*    /simulation/*
+[Boas-vindas] → [Enriquecimento] → [Entrevista] → [Revisão] → [Relatório SOP] → [Simulação]
+     POST           POST+GET        GET+POST loop   GET+POST     POST+GET        POST+GET
+    /sessions       /enrich         /interview/*     /review      /agent/*        /simulation/*
 ```
 
 ### Estado no Frontend
@@ -478,7 +509,7 @@ app.add_middleware(
 O frontend precisa manter:
 - `session_id` — criado no step 1, usado em todos os outros
 - `current_question` — recebido da API, apresentado ao usuário
-- `phase` — "core" | "dynamic" | "defaults" | "complete"
+- `phase` — "core" | "dynamic" | "review" | "complete"
 - `progress` — core_answered, dynamic_answered, estimated_remaining
 
 **Não precisa manter**: answers (backend persiste), interview_state (backend gerencia).
@@ -535,11 +566,15 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 
 | Decision | Reason |
 |----------|--------|
-| 12 core questions (expanded from PRD's 10) | Added juros (core_8) and multa (core_9). All financial questions have explicit "none" option. |
-| No slider type in questions | Changed core_6 from slider to select for consistency |
+| 16 core questions (expanded from PRD's 10) | Added juros, multa, payment verification, regulations, agent name, escalation open. Financial questions are open text. |
+| Max 3 dynamic questions (reduced from 8) | Agent is already expert — fewer but better targeted questions needed |
+| No follow-ups on dynamic phase | Reduces interview fatigue; dynamic answers are already contextual |
+| Frustration detection (hardcoded signals) | 13 Portuguese phrases skip follow-up without LLM call |
+| OnboardingReport SOP replaces AgentConfig | Output is a structured report for downstream consumption, not a ready-to-use system_prompt |
+| Web research in enrichment | Website alone doesn't capture full context; search adds reputation, sector info |
+| Avatar generation via Gemini | Consistent professional style, 2 options per gender, realistic |
 | Two LangGraph graphs | Full graph (with initialize) for create_interview(), next-question graph for get_next_question() |
 | Enrichment pre-fill at pop time | Not at initialization — allows enrichment to arrive after interview start |
-| Contact hours removed from SmartDefaults | Messages are always available — timing is user-controlled |
 | Max 2 follow-ups per question | Prevents infinite loops while allowing meaningful deepening |
 | Confidence threshold >= 7 for completion | Balances thoroughness with brevity |
 
@@ -555,4 +590,5 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 | CORS | Open | Restricted to `portal.financecrew.ai` |
 | Monitoring | None | OpenTelemetry + LangSmith |
 | Rate limiting | None | Redis-based |
-| Agent storage | Backend onboarding DB | Directus (via API or direct DB write) |
+| Report storage | Backend onboarding DB | Directus (via API or direct DB write) |
+| Avatar storage | Local filesystem | S3/R2 cloud storage |

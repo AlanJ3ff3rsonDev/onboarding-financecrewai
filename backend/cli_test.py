@@ -107,7 +107,7 @@ def _present_question(question: dict, number: int | None = None) -> str:
     elif phase == "dynamic":
         label = "   Pergunta adicional (IA)"
     elif number:
-        label = f"   Pergunta {number}/12"
+        label = f"   Pergunta {number}/14"
     else:
         label = f"   {q_id}"
 
@@ -181,7 +181,7 @@ def main() -> None:
 
     # ── Step 4: Interview — core questions ───────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Entrevista — 12 perguntas principais{RESET}")
+    print(f"{BOLD}  Entrevista — 14 perguntas principais{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
 
     data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
@@ -189,7 +189,7 @@ def main() -> None:
 
     while True:
         # Check if we left the core phase
-        if data.get("phase") in ("defaults", "complete"):
+        if data.get("phase") in ("review", "complete"):
             break
         if data.get("question_id") is None and data.get("next_question") is None:
             break
@@ -236,13 +236,13 @@ def main() -> None:
 
     while safety < 25:
         safety += 1
-        if data.get("phase") in ("defaults", "complete"):
+        if data.get("phase") in ("review", "complete"):
             break
 
         question = data if "question_id" in data else data.get("next_question")
         if question is None:
             data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
-            if data.get("phase") in ("defaults", "complete"):
+            if data.get("phase") in ("review", "complete"):
                 break
             question = data
             if question.get("question_id") is None:
@@ -265,104 +265,26 @@ def main() -> None:
 
     print(f"\n   {GREEN}Entrevista concluida! ({core_count} perguntas + {dynamic_count} adicionais){RESET}")
 
-    # ── Step 6: Smart defaults ───────────────────────────────────────────
+    # ── Step 6: Review ──────────────────────────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Configuracoes padrao do agente{RESET}")
+    print(f"{BOLD}  Revisao da entrevista{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
 
-    defaults_data = _get(client, f"/api/v1/sessions/{session_id}/interview/defaults")
-    defaults = defaults_data["defaults"]
+    review_data = _get(client, f"/api/v1/sessions/{session_id}/interview/review")
+    summary = review_data.get("summary", {})
 
-    LABELS = {
-        "follow_up_interval_days": "Intervalo entre follow-ups (dias)",
-        "max_contact_attempts": "Maximo de tentativas de contato",
-        "use_first_name": "Usar primeiro nome do devedor",
-        "identify_as_ai": "Identificar-se como IA",
-        "min_installment_value": "Valor minimo da parcela (R$)",
-        "discount_strategy": "Estrategia de desconto",
-        "payment_link_generation": "Gerar link de pagamento",
-        "max_discount_installment_pct": "Desconto max. parcelamento (%)",
-    }
+    print(f"\n   {BOLD}Resumo das respostas:{RESET}")
+    for key, val in summary.items():
+        if isinstance(val, str) and val:
+            print(f"   {DIM}{key}:{RESET} {val[:120]}")
 
-    STRATEGY_LABELS = {
-        "only_when_resisted": "Apenas quando devedor resiste",
-        "proactive": "Proativo (oferece logo)",
-        "escalating": "Escalonado (aumenta aos poucos)",
-    }
+    notes = input(f"\n   {CYAN}Notas adicionais (Enter para pular): {RESET}").strip() or None
 
-    print()
-    for key, label in LABELS.items():
-        val = defaults.get(key)
-        if isinstance(val, bool):
-            display = "Sim" if val else "Nao"
-        elif key == "discount_strategy":
-            display = STRATEGY_LABELS.get(str(val), str(val))
-        else:
-            display = str(val)
-        print(f"   {label}: {BOLD}{display}{RESET}")
-
-    accept = input(f"\n   {CYAN}Aceitar todos os padroes? (s/n): {RESET}").strip().lower()
-
-    if accept != "s":
-        print(f"\n   {DIM}Edite os valores (Enter para manter o atual):{RESET}")
-        edited = dict(defaults)
-
-        # follow_up_interval_days
-        v = input(f"   Intervalo follow-ups (dias) [{defaults['follow_up_interval_days']}]: ").strip()
-        if v:
-            edited["follow_up_interval_days"] = int(v)
-
-        # max_contact_attempts
-        v = input(f"   Max tentativas [{defaults['max_contact_attempts']}]: ").strip()
-        if v:
-            edited["max_contact_attempts"] = int(v)
-
-        # use_first_name
-        v = input(f"   Usar primeiro nome? (s/n) [{'s' if defaults['use_first_name'] else 'n'}]: ").strip().lower()
-        if v:
-            edited["use_first_name"] = v == "s"
-
-        # identify_as_ai
-        v = input(f"   Identificar como IA? (s/n) [{'s' if defaults['identify_as_ai'] else 'n'}]: ").strip().lower()
-        if v:
-            edited["identify_as_ai"] = v == "s"
-
-        # min_installment_value
-        v = input(f"   Valor min. parcela R$ [{defaults['min_installment_value']}]: ").strip()
-        if v:
-            edited["min_installment_value"] = float(v)
-
-        # discount_strategy
-        print(f"   Estrategia de desconto [{STRATEGY_LABELS.get(defaults['discount_strategy'], defaults['discount_strategy'])}]:")
-        print(f"     [1] Apenas quando devedor resiste")
-        print(f"     [2] Proativo")
-        print(f"     [3] Escalonado")
-        v = input(f"   Escolha (1/2/3 ou Enter): ").strip()
-        if v == "1":
-            edited["discount_strategy"] = "only_when_resisted"
-        elif v == "2":
-            edited["discount_strategy"] = "proactive"
-        elif v == "3":
-            edited["discount_strategy"] = "escalating"
-
-        # payment_link_generation
-        v = input(f"   Gerar link pagamento? (s/n) [{'s' if defaults['payment_link_generation'] else 'n'}]: ").strip().lower()
-        if v:
-            edited["payment_link_generation"] = v == "s"
-
-        # max_discount_installment_pct
-        v = input(f"   Desconto max. parcelamento % [{defaults['max_discount_installment_pct']}]: ").strip()
-        if v:
-            edited["max_discount_installment_pct"] = float(v)
-
-        defaults = edited
-
-    data = _post(
-        client,
-        f"/api/v1/sessions/{session_id}/interview/defaults",
-        json=defaults,
-    )
-    print(f"\n   {GREEN}Padroes confirmados!{RESET}")
+    confirm_body: dict = {}
+    if notes:
+        confirm_body["additional_notes"] = notes
+    _post(client, f"/api/v1/sessions/{session_id}/interview/review", json=confirm_body)
+    print(f"\n   {GREEN}Revisao confirmada!{RESET}")
 
     # ── Step 7: Generate agent ───────────────────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
@@ -388,9 +310,15 @@ def main() -> None:
     # Negotiation
     neg = config.get("negotiation_policies", {})
     print(f"\n   {BOLD}Negociacao:{RESET}")
-    print(f"   Desconto max (a vista): {neg.get('max_discount_full_payment_pct', '?')}%")
-    print(f"   Desconto max (parcelado): {neg.get('max_discount_installment_pct', '?')}%")
-    print(f"   Max parcelas: {neg.get('max_installments', '?')}x")
+    for pol_key, pol_label in [
+        ("discount_policy", "Desconto"),
+        ("installment_policy", "Parcelamento"),
+        ("interest_policy", "Juros"),
+        ("penalty_policy", "Multa"),
+    ]:
+        pol_val = neg.get(pol_key, "")
+        if pol_val:
+            print(f"   {pol_label}: {pol_val[:120]}")
     print(f"   Metodos: {', '.join(neg.get('payment_methods', []))}")
 
     # Guardrails

@@ -8,7 +8,7 @@
 | **Owner** | Francisco (Co-founder) |
 | **Status** | Active |
 | **Created** | 2026-02-19 |
-| **Updated** | 2026-02-20 |
+| **Updated** | 2026-02-22 |
 | **Reference** | `pesquisa_onboarding_self_service_v2.md` |
 
 ---
@@ -61,16 +61,18 @@ Build a **self-service onboarding system** where a client:
 
 ## 3. Project Status & Scope
 
-### Backend API — COMPLETE (T01-T25)
+### Backend API — Core Complete (T01-T28), Enhancements In Progress (T29-T34)
 
 | Component | Status | Details |
 |-----------|--------|---------|
 | **Enrichment** | Done | Website scraping (Playwright) + LLM extraction (GPT-4.1-mini) |
-| **Wizard/Interview** | Done | 12 core questions + AI follow-ups (max 2/question) + dynamic questions (up to 8) + smart defaults |
-| **Agent Generation** | Done | Context engineering prompt + structured output + sanity checks + adjustment endpoint |
-| **Simulation** | Done | 2 simulated conversations (cooperative + resistant) from AgentConfig |
+| **Web Research** | Planned (T33) | Busca web sobre a empresa (Serper API) + consolidação LLM |
+| **Wizard/Interview** | Done (refinements planned) | 14 core questions + AI follow-ups (max 2/question) + dynamic questions (up to 3). T29 adds core_3 text + core_10_open. T30 adds agent name. |
+| **Agent Identity** | Planned (T30-T32) | Nome do agente (core_0) + upload de foto + geração de avatar (Gemini API) |
+| **Agent Generation** | Done (replacing with SOP in T34) | Currently: AgentConfig + system_prompt. T34 replaces with OnboardingReport SOP. |
+| **Simulation** | Done (adapting in T34) | 2 simulated conversations (cooperative + resistant). Will adapt to use SOP data. |
 | **Audio Transcription** | Done | GPT-4o-mini-transcribe, supports 11 audio formats, Portuguese |
-| **Integration Test** | Done | End-to-end test with real OpenAI API — 120/120 tests passing |
+| **Integration Test** | Done | End-to-end test with real OpenAI API — 118 tests passing |
 
 ### Deploy — NEXT (M6)
 
@@ -95,7 +97,7 @@ Build a **self-service onboarding system** where a client:
 | Payment/Billing | Separate feature |
 | Campaign Launch | Existing mechanism in platform |
 | WhatsApp Integration | Existing system, agent config will be plugged into it |
-| Directus Integration | Future — save AgentConfig to platform's agent database |
+| Directus Integration | Future — save OnboardingReport to platform's agent database |
 
 ---
 
@@ -145,19 +147,21 @@ Build a **self-service onboarding system** where a client:
          ↓
 [2] Tela de boas-vindas: nome, site, CNPJ (opcional)
          ↓
-[3] Sistema analisa o site (scraping + LLM) — mostra dados extraídos
+[3] Sistema analisa o site (scraping + LLM) + pesquisa web sobre a empresa
          ↓
-[4] Entrevista: 12 perguntas sobre o negócio — text/audio, com follow-ups da IA
+[4] Entrevista: nome do agente + 15 perguntas sobre o negócio — text/audio, com follow-ups da IA
          ↓
-[5] Perguntas dinâmicas da IA (2-8 perguntas específicas para o negócio)
+[5] Perguntas dinâmicas da IA (até 3 perguntas específicas para o negócio)
          ↓
-[6] Confirmação de defaults (intervalo follow-up, max parcelas, estratégia desconto)
+[6] Revisão: resumo das respostas + notas opcionais
          ↓
-[7] Sistema gera AgentConfig JSON (system prompt, policies, guardrails)
+[7] Upload ou geração de avatar do agente (foto ou IA)
          ↓
-[8] Sistema gera 2 conversas simuladas (cooperativo + resistente)
+[8] Sistema gera Relatório SOP (análise de especialista, políticas, recomendações)
          ↓
-[9] Usuário revisa e pode ajustar/regenerar
+[9] Sistema gera 2 conversas simuladas (cooperativo + resistente)
+         ↓
+[10] Usuário revisa e aprova
 ```
 
 ---
@@ -177,59 +181,73 @@ Build a **self-service onboarding system** where a client:
 
 ### FR-2: Wizard / Interview — IMPLEMENTED
 
-**Core concept**: AI-driven interview that collects everything needed to create a collection agent. Adaptive approach: 12 core questions → AI follow-ups → dynamic questions → smart defaults.
+**Core concept**: AI-driven interview that collects everything needed to create a collection agent. Adaptive approach: agent name → 15 core questions → AI follow-ups → dynamic questions → review.
 
-**Design principle**: ~5-8 minutes. AI achieves depth through smart follow-ups, not quantity.
+**Design principle**: ~5-8 minutes. AI achieves depth through smart follow-ups, not quantity. The agent is already an expert in debt collection — the interview captures only company-specific information.
 
-#### Layer 1: Core Questions (12, mandatory)
+#### Layer 1: Core Questions (16 planned, mandatory except core_0)
 
 | # | Question (Portuguese) | Type | Follow-up? |
 |---|----------------------|------|------------|
+| 0 | Quer dar um nome ao seu agente de cobrança? | text (optional) | No |
 | 1 | O que sua empresa vende ou oferece? | text | Yes (AI evaluates) |
 | 2 | Como seus clientes normalmente pagam? | multiselect | No (unless "outro") |
-| 3 | Quando você considera uma conta vencida? | select | No (unless "outro") |
+| 3 | Quando você considera uma conta vencida? | text | Yes (AI evaluates) |
 | 4 | Descreva seu fluxo de cobrança atual | text | Yes (AI evaluates) |
 | 5 | Qual tom o agente deve usar? | select | No (unless "depende") |
-| 6 | Desconto para pagamento integral imediato? | select | No (unless "outro") |
-| 7 | Parcelamento — máximo de parcelas? | select | No |
-| 8 | Juros por atraso? | select | No (unless "outro") |
-| 9 | Multa por atraso? | select | No (unless "outro") |
-| 10 | Quando escalar para humano? | multiselect | No (unless "outro") |
+| 6 | Vocês oferecem desconto para pagamento? Como funciona? | text | Yes (AI evaluates) |
+| 7 | Vocês oferecem parcelamento? Como funciona? | text | Yes (AI evaluates) |
+| 8 | Vocês cobram juros por atraso? Como funciona? | text | Yes (AI evaluates) |
+| 9 | Vocês cobram multa por atraso? Como funciona? | text | Yes (AI evaluates) |
+| 10 | Quando o agente deve escalar para um humano? | multiselect | No (unless "outro") |
+| 10_open | Além dessas situações, algo específico do negócio para escalar? | text | Yes (AI evaluates) |
 | 11 | Coisas que o agente NUNCA deve fazer/dizer | text | Yes (AI evaluates) |
-| 12 | Razões mais comuns para não pagar | text | Yes (AI evaluates) |
+| 12 | Objeções específicas do seu negócio? | text | Yes (AI evaluates) |
+| 13 | Como vocês sabem se um cliente pagou? | text | Yes (AI evaluates) |
+| 14 | Regulamentação específica do setor que impacta cobrança? | text | Yes (AI evaluates) |
 
-**Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — pre-filled from website data when available.
+**Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — pre-filled from website data + web research when available.
 
-**AI follow-ups**: Max 2 per question. Text questions are always evaluated. Select/multiselect only evaluated if answer contains "outro" or "depende".
+**AI follow-ups**: Max 2 per question. Text questions are always evaluated. Select/multiselect only evaluated if answer contains "outro" or "depende". Follow-ups disabled in dynamic phase. Frustration detection skips follow-up automatically.
 
-#### Layer 2: AI-Driven Dynamic Questions (2-8, context-dependent)
+#### Layer 2: AI-Driven Dynamic Questions (up to 3, context-dependent)
 
-After core questions, the AI generates targeted questions from 8 categories (business_model, debtor_profile, negotiation_depth, scenario_handling, legal_judicial, communication, segmentation, current_pain). Completeness evaluated after each: confidence >= 7/10 → stops.
+After core questions, the AI generates targeted questions from 7 categories (business_model, debtor_profile, negotiation_depth, legal_judicial, segmentation, brand_language, payment_operations). Completeness evaluated after each: confidence >= 7/10 → stops. No follow-ups on dynamic questions.
 
-#### Layer 3: Smart Defaults (confirm or adjust)
+#### Layer 3: Review (confirm answers + optional notes)
 
-| Setting | Default |
-|---------|---------|
-| Follow-up interval | Every 3 days |
-| Max contact attempts | 10 |
-| Use debtor's first name | Yes |
-| Identify as AI | Yes |
-| Min installment value | R$50 |
-| Discount strategy | Only when debtor resists |
-| Payment link generation | Yes (PIX + Boleto) |
-| Max discount for installments | 5% |
+User reviews a summary of all answers and can add additional notes before proceeding to agent generation. Guardrail defaults (follow_up_interval_days=3, max_attempts=10, must_identify_as_ai=true) are populated by the LLM during report generation.
 
 ### FR-3: Audio Transcription — IMPLEMENTED
 
 GPT-4o-mini-transcribe, supports 11 formats (webm, mp4, wav, mpeg, ogg, flac, m4a, etc.), max 25MB, Portuguese.
 
-### FR-4: Agent Generation — IMPLEMENTED
+### FR-4: Report/SOP Generation — REFACTORING (T34)
 
-Context engineering prompt with all data → GPT-4.1-mini structured output → AgentConfig JSON. Sanity checks auto-correct: discount caps, installment ranges, system prompt quality (>200 chars). Adjustment endpoint for targeted changes + LLM regeneration of text fields.
+**Current**: Context engineering prompt → AgentConfig JSON with system_prompt.
 
-### FR-5: Simulation — IMPLEMENTED
+**Planned (T34)**: Replace AgentConfig with `OnboardingReport` — a structured JSON SOP (Standard Operating Procedure) that:
+- Describes the company, collection policies, tone, guardrails
+- Includes `expert_recommendations`: 300+ word analysis from a collection expert on the ideal process for this company
+- Includes `agent_identity`: name + avatar URL
+- Includes `enrichment_summary`: combined website analysis + web research
+- Is consumed by a downstream system to create the actual agent system_prompt
 
-Single LLM call generates 2 conversations (cooperative + resistant, 8-15 messages each). Agent follows exact config (tone, discounts, guardrails). Scenario responses validated against config constraints.
+### FR-5: Simulation — IMPLEMENTED (adapting in T34)
+
+Single LLM call generates 2 conversations (cooperative + resistant, 8-15 messages each). Will be adapted to use OnboardingReport data instead of AgentConfig.
+
+### FR-8: Web Research — PLANNED (T33)
+
+In addition to website scraping, the system searches the web about the company using a search API (Serper/Google). Results are consolidated by LLM into a `WebResearchResult` with: company description, products/services, sector context, reputation summary, collection-relevant insights. Data feeds into enrichment pre-fills and the final SOP report.
+
+### FR-9: Agent Personalization — PLANNED (T30-T32)
+
+The client can personalize their agent with:
+- **Name** (T30): Optional question at the start of the interview (core_0). Examples: "Sofia", "Carlos".
+- **Avatar** (T31-T32): Two paths:
+  - **Upload**: Client uploads a photo (logo, custom avatar). PNG/JPG/WebP, max 5MB.
+  - **AI Generation** (T32): Based on the agent name, generate 2 realistic avatar options using Google Gemini API. One lighter skin tone, one darker. Professional business attire, collection analyst look. Client picks one.
 
 ### FR-6: Frontend Onboarding — PENDING
 
@@ -238,10 +256,10 @@ Single LLM call generates 2 conversations (cooperative + resistant, 8-15 message
 | # | Tela | Função | API Backend |
 |---|------|--------|-------------|
 | 1 | **Boas-vindas** | Coleta nome, site, CNPJ (opcional) | `POST /sessions` |
-| 2 | **Enriquecimento** | Loading + mostra dados extraídos | `POST /enrich` → `GET /enrichment` |
-| 3 | **Entrevista (wizard)** | Pergunta por pergunta, barra de progresso, text/select/multiselect, follow-ups | `GET /interview/next` → `POST /interview/answer` (loop) |
-| 4 | **Smart Defaults** | Mostra defaults, toggle/ajustar, confirmar | `GET /interview/defaults` → `POST /interview/defaults` |
-| 5 | **Agente gerado** | System prompt, policies, guardrails, cenários. Opção de ajustar. | `POST /agent/generate` → `GET /agent` → `PUT /agent/adjust` |
+| 2 | **Enriquecimento** | Loading + mostra dados extraídos (site + pesquisa web) | `POST /enrich` → `GET /enrichment` |
+| 3 | **Entrevista (wizard)** | Nome do agente + perguntas, barra de progresso, avatar upload/geração | `GET /interview/next` → `POST /interview/answer` (loop) + avatar endpoints |
+| 4 | **Revisão** | Resumo das respostas + notas opcionais | `GET /interview/review` → `POST /interview/review` |
+| 5 | **Relatório SOP** | Relatório de especialista, políticas, recomendações. | `POST /agent/generate` → `GET /agent` |
 | 6 | **Simulação** | 2 conversas como chat (cooperativo + resistente). Aprovar ou regenerar. | `POST /simulation/generate` → `GET /simulation` |
 
 **UX requirements**:
@@ -260,7 +278,7 @@ Backend acessível via URL pública para o frontend chamar.
 |-----------|----------|
 | **CORS** | Permitir `portal.financecrew.ai` + `localhost` (dev) |
 | **Hosting** | Railway ou Render (Python + Playwright suportados) |
-| **Env vars** | `OPENAI_API_KEY`, `ALLOWED_ORIGINS` |
+| **Env vars** | `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `SEARCH_API_KEY`, `ALLOWED_ORIGINS` |
 | **Chromium** | Playwright Chromium instalado no container |
 | **Database** | SQLite para MVP (PostgreSQL quando escalar) |
 

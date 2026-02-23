@@ -21,9 +21,13 @@
 | **M4** | Simulation | T23-T24 | DONE |
 | **M5** | Integration Test | T25 | DONE |
 | **M5.5** | Refatoração Perguntas | T26-T28 | DONE |
-| **M6** | Deploy | T29-T31 | Pending |
-| **M7** | Frontend Onboarding (Lovable) | T32-T38 | Pending |
-| **M8** | Integração Directus | T39 | Future |
+| **M5.6** | Refinamento de Perguntas | T29 | Pending |
+| **M5.7** | Personalização do Agente (Nome + Avatar) | T30-T32 | Pending |
+| **M5.8** | Enriquecimento Avançado (Pesquisa Web) | T33 | Pending |
+| **M5.9** | Relatório SOP (substituir AgentConfig) | T34 | Pending |
+| **M6** | Deploy | T35-T37 | Pending |
+| **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
+| **M8** | Integração Directus | T45 | Future |
 
 ---
 
@@ -831,13 +835,460 @@
 
 ---
 
+## M5.6: Refinamento de Perguntas
+
+### T29: core_3 texto aberto + core_10 pergunta aberta de escalação
+
+**Objective**: Converter core_3 (vencimento) de select para texto aberto e adicionar pergunta aberta de escalação após core_10.
+
+**Problem it solves**:
+- core_3 como select com opções fixas (D+0, D+1, D+5...) não captura regras complexas de vencimento com múltiplas faixas. Empresas reais têm processos como: "até 5 dias é lembrete amigável, 5-30 cobrança firme, acima de 30 vai pro jurídico".
+- core_10 como multiselect cobre cenários comuns de escalação, mas não captura situações específicas do negócio. Uma pergunta aberta complementar ("Além dessas, tem algo específico?") captura o que o checklist não cobre.
+
+**Dependencies**: T28
+
+**Files to modify**:
+- `backend/app/prompts/interview.py`
+- `backend/app/prompts/agent_generator.py` (build_prompt para nova pergunta)
+- `backend/tests/test_interview.py`
+- `backend/tests/test_agent_generator.py`
+
+**Changes**:
+
+1. **core_3** (`app/prompts/interview.py`):
+   - Mudar `question_type` de `"select"` para `"text"`
+   - Remover `options`
+   - Adicionar `context_hint`: "Descreva quando e como você considera uma conta vencida. Se existem faixas diferentes (ex: 'até 5 dias é lembrete, 5-30 dias é cobrança firme, acima de 30 vai pro jurídico'), descreva cada uma."
+
+2. **Nova pergunta após core_10** (`app/prompts/interview.py`):
+   - Inserir nova pergunta com `question_id="core_10_open"` logo após core_10 na lista CORE_QUESTIONS
+   - `question_text`: "Além dessas situações, existe algo específico do seu negócio que deveria sempre ser enviado para um humano?"
+   - `question_type`: "text"
+   - `is_required`: False
+   - `context_hint`: "Exemplos: 'quando o cliente é empresa parceira', 'quando menciona processo no Procon', 'dívida acima de R$10.000'. Se não houver, diga 'não'."
+   - Obs: usar ID "core_10_open" em vez de renumerar para evitar quebrar referências existentes
+
+3. **build_prompt** (`app/prompts/agent_generator.py`):
+   - Incluir core_10_open na seção 7 (Guardrails e Escalação), logo após core_10
+   - Label: "Escalação adicional (específico do negócio)"
+
+4. **Atualizar testes**:
+   - `test_core_questions_count`: 14 → 15
+   - Ajustar assertions de tipo de core_3 (agora é "text", sem options)
+   - Ajustar ranges de respostas em helpers (_dynamic_state, _session_in_review_phase, etc.)
+   - Novo teste: `test_core_3_is_text_question`
+   - Novo teste: `test_core_10_open_exists`
+   - Fixture de agent_generator: adicionar resposta para core_10_open
+
+**Definition of Done**:
+- core_3 é pergunta de texto aberto (sem options)
+- core_10_open existe como pergunta de texto aberto após core_10
+- build_prompt inclui core_10_open na seção de escalação
+- Todos os 118+ testes passam
+- Teste manual: rodar CLI e verificar que core_3 pede texto livre e core_10_open aparece após multiselect
+
+**Status**: `pending`
+
+---
+
+## M5.7: Personalização do Agente (Nome + Avatar)
+
+### T30: Pergunta de nome do agente
+
+**Objective**: Adicionar pergunta opcional no início da entrevista para o cliente dar um nome ao agente de cobrança.
+
+**Problem it solves**: Personaliza a experiência. O cliente sente ownership do agente ("Sofia", "Carlos", "Ana"). O nome também será usado para gerar o avatar (T32) e entra no relatório SOP final (T34).
+
+**Dependencies**: T29
+
+**Files to modify**:
+- `backend/app/prompts/interview.py`
+- `backend/app/services/interview_agent.py`
+- `backend/app/prompts/agent_generator.py`
+- `backend/tests/test_interview.py`
+- `backend/tests/test_agent_generator.py`
+
+**Changes**:
+
+1. **Nova pergunta** (`app/prompts/interview.py`):
+   - Inserir como PRIMEIRA pergunta na lista CORE_QUESTIONS
+   - `question_id`: "core_0"
+   - `question_text`: "Quer dar um nome ao seu agente de cobrança?"
+   - `question_type`: "text"
+   - `is_required`: False (se pular, o sistema pode atribuir um padrão ou deixar em branco)
+   - `context_hint`: "Exemplos: Sofia, Carlos, Ana. Dê um nome que represente sua marca. Se preferir, pode pular."
+
+2. **Tratamento de resposta opcional** (`app/services/interview_agent.py`):
+   - Se o cliente pular (resposta vazia ou "não"), armazenar como respondida e avançar normalmente
+   - Nota: hoje `SubmitAnswerRequest.answer` tem `min_length=1`, precisamos permitir "não" ou similar como resposta válida
+
+3. **build_prompt** (`app/prompts/agent_generator.py`):
+   - Incluir core_0 numa nova seção "0. Identidade do Agente" no início do prompt
+   - Label: "Nome escolhido para o agente"
+
+4. **Atualizar testes**:
+   - `test_core_questions_count`: 15 → 16
+   - Ajustar ranges de respostas em helpers
+   - Novo teste: `test_core_0_is_first_question` (primeira pergunta é core_0)
+   - Novo teste: `test_core_0_optional` (pode responder "não" e avançar)
+
+**Definition of Done**:
+- core_0 é a primeira pergunta da entrevista
+- Cliente pode dar nome ou pular
+- Nome aparece no prompt de geração
+- Todos os testes passam
+- Teste manual: CLI mostra "Quer dar um nome ao seu agente?" como primeira pergunta
+
+**Status**: `pending`
+
+---
+
+### T31: Upload de foto do agente
+
+**Objective**: Permitir que o cliente suba uma foto para representar o agente (logo da empresa, avatar personalizado, ou qualquer imagem).
+
+**Problem it solves**: O cliente pode querer usar a identidade visual da empresa ou uma foto específica para representar o agente. Isso é a alternativa ao avatar gerado por IA (T32).
+
+**Dependencies**: T30
+
+**Files to create/modify**:
+- `backend/app/routers/agent.py` (novos endpoints)
+- `backend/app/models/orm.py` (novo campo)
+- `backend/tests/test_agent.py` ou novo arquivo de teste
+
+**Changes**:
+
+1. **Novo endpoint** (`app/routers/agent.py`):
+   - `POST /api/v1/sessions/{id}/agent/avatar/upload`
+   - Aceita `multipart/form-data` com campo "file"
+   - Validações:
+     - Formato: PNG, JPG, JPEG, WebP (rejeitar outros com 400)
+     - Tamanho: máximo 5MB (rejeitar com 400)
+     - Session existe (404 se não)
+   - Salva arquivo em `uploads/avatars/{session_id}.{ext}`
+   - Cria diretório `uploads/avatars/` se não existir
+   - Retorna: `{ "avatar_url": "/uploads/avatars/{session_id}.png" }`
+
+2. **Endpoint para servir imagens** (opcional — pode usar StaticFiles do FastAPI):
+   - Montar `/uploads` como arquivos estáticos
+
+3. **Persistência** (`app/models/orm.py`):
+   - Adicionar coluna `agent_avatar_path` (String, nullable) na tabela sessions
+   - Atualizar o campo ao fazer upload
+
+4. **Adicionar ao .gitignore**: `uploads/`
+
+**Automated tests**:
+- `test_upload_avatar_png_success`: upload de PNG válido → 200, path retornado
+- `test_upload_avatar_jpg_success`: upload de JPG válido → 200
+- `test_upload_avatar_invalid_format`: upload de .txt → 400 com mensagem clara
+- `test_upload_avatar_too_large`: arquivo > 5MB → 400
+- `test_upload_avatar_session_not_found`: session inexistente → 404
+- `test_upload_avatar_overwrites`: segundo upload sobrescreve o anterior
+
+**Definition of Done**:
+- Endpoint aceita upload de imagem válida
+- Imagem salva no filesystem com path persistido no banco
+- Validações de formato e tamanho funcionam
+- Todos os testes passam
+
+**Status**: `pending`
+
+---
+
+### T32: Geração de avatar com API Gemini
+
+**Objective**: Gerar 2 opções de avatar realista baseado no nome do agente usando a API de geração de imagens do Google Gemini. O cliente escolhe qual prefere.
+
+**Problem it solves**: Se o cliente não tem uma foto, o sistema gera automaticamente 2 opções profissionais e realistas para ele escolher. O estilo é sempre consistente: pessoa profissional, roupa social, visual de analista de cobrança.
+
+**Dependencies**: T31
+
+**Files to create/modify**:
+- `backend/app/services/avatar_generator.py` (novo)
+- `backend/app/routers/agent.py` (novos endpoints)
+- `backend/app/config.py` (GOOGLE_API_KEY)
+- `backend/.env.example` (GOOGLE_API_KEY)
+- `backend/tests/test_avatar.py` (novo)
+
+**Changes**:
+
+1. **Detecção de gênero** (`app/services/avatar_generator.py`):
+   - Heurística simples para nomes brasileiros:
+     - Nomes terminados em "a" (exceto exceções como "Luca") → feminino
+     - Lista de nomes comuns para desempate (João, Carlos, Pedro = masculino; Sofia, Ana, Maria = feminino)
+     - Default: feminino (mais comum em atendimento)
+
+2. **Geração de imagens** (`app/services/avatar_generator.py`):
+   - Função `generate_avatar(agent_name: str) -> list[bytes]` que retorna 2 imagens
+   - Prompt de imagem (sempre o mesmo estilo):
+     - Feminino: "Professional headshot portrait of a Brazilian woman working as a financial analyst. Formal business attire (blazer). Clean office background. Photorealistic style. Variation 1: lighter skin tone with brown hair. Variation 2: darker skin tone with dark hair."
+     - Masculino: equivalente com "Brazilian man"
+   - Chamar API Gemini (google-genai ou REST API) para gerar 2 imagens separadas
+   - Salvar em `uploads/avatars/{session_id}_opt1.png` e `_opt2.png`
+
+3. **Novos endpoints** (`app/routers/agent.py`):
+   - `POST /api/v1/sessions/{id}/agent/avatar/generate`
+     - Pega o nome do agente das respostas da entrevista (core_0)
+     - Se core_0 não respondida, retorna 400 "Dê um nome ao agente primeiro"
+     - Gera 2 opções
+     - Retorna: `{ "options": [{ "id": "opt_1", "url": "/uploads/avatars/..." }, { "id": "opt_2", "url": "/uploads/avatars/..." }] }`
+   - `POST /api/v1/sessions/{id}/agent/avatar/select`
+     - Body: `{ "option_id": "opt_1" }`
+     - Move a opção escolhida para `{session_id}.png`, remove a outra
+     - Atualiza `agent_avatar_path` no banco
+     - Retorna: `{ "avatar_url": "/uploads/avatars/{session_id}.png" }`
+
+4. **Config** (`app/config.py`):
+   - `GOOGLE_API_KEY: str = ""` (para API Gemini)
+
+5. **Fallback**: se geração falhar (API indisponível, erro), retornar erro 503 com mensagem "Geração indisponível no momento. Faça upload de uma foto." — não bloqueia o fluxo
+
+**Automated tests** (todos com mock da API Gemini):
+- `test_detect_gender_feminine`: "Sofia" → feminino
+- `test_detect_gender_masculine`: "Carlos" → masculino
+- `test_generate_avatar_returns_two_options`: mock API → 2 URLs retornadas
+- `test_generate_avatar_without_name`: core_0 não respondida → 400
+- `test_select_avatar_valid`: seleciona opt_1 → path atualizado
+- `test_select_avatar_invalid_option`: option_id inexistente → 400
+- `test_generate_avatar_api_failure`: API falha → 503 com mensagem amigável
+
+**Definition of Done**:
+- Endpoint gera 2 avatares realistas via Gemini API
+- Detecção de gênero funciona para nomes brasileiros comuns
+- Cliente pode escolher entre as 2 opções
+- Opção selecionada é salva como avatar do agente
+- Fallback gracioso se API falhar
+- Todos os testes passam
+
+**Status**: `pending`
+
+---
+
+## M5.8: Enriquecimento Avançado (Pesquisa Web)
+
+### T33: Pesquisa web sobre a empresa no enrichment
+
+**Objective**: Além do scraping do site, fazer buscas na web sobre a empresa para enriquecer o contexto do onboarding com informações que o site sozinho não revela.
+
+**Problem it solves**: O site da empresa pode não dizer tudo. Uma busca web traz:
+- O que a empresa realmente vende/cobra (validação do que está no site)
+- Reputação (reclamações, avaliações)
+- Contexto do setor e concorrentes
+- Informações que ajudam a pre-preencher perguntas com mais confiança (ex: chegar na primeira pergunta já sabendo "vocês cobram mensalidades de plano de saúde, correto?")
+
+**Dependencies**: T28
+
+**Files to create/modify**:
+- `backend/app/services/web_research.py` (novo)
+- `backend/app/services/enrichment.py` (integrar pesquisa)
+- `backend/app/prompts/enrichment.py` (novo prompt de consolidação)
+- `backend/app/models/schemas.py` (WebResearchResult)
+- `backend/app/config.py` (SEARCH_API_KEY)
+- `backend/.env.example`
+- `backend/tests/test_enrichment.py` (novos testes)
+
+**Changes**:
+
+1. **Serviço de pesquisa** (`app/services/web_research.py`):
+   - Função `search_company(company_name: str, website: str) -> WebResearchResult`
+   - Fazer 2-3 buscas web usando API de busca (Serper API, Google Custom Search, ou SerpAPI — escolher a mais simples/barata):
+     - `"{company_name}"` — informações gerais
+     - `"{company_name} cobrança OR inadimplência OR reclamação"` — contexto de cobrança
+     - `"site:reclameaqui.com.br {company_name}"` — reputação (opcional)
+   - Coletar snippets e títulos dos top 5 resultados de cada busca
+   - Enviar snippets ao LLM para consolidação:
+     - "Dado esses resultados de busca sobre a empresa X, extraia: o que a empresa faz, o que cobra, setor, contexto relevante para cobrança, reputação."
+   - Retornar `WebResearchResult`
+
+2. **Novo schema** (`app/models/schemas.py`):
+   - `WebResearchResult`:
+     - `company_description: str` — o que a empresa faz (consolidado da busca)
+     - `products_and_services: str` — produtos/serviços identificados
+     - `sector_context: str` — contexto do setor
+     - `reputation_summary: str` — resumo de reputação (se encontrado)
+     - `collection_relevant_insights: str` — insights relevantes para cobrança
+
+3. **Integrar ao enrichment** (`app/services/enrichment.py`):
+   - Após scraping do site, chamar `search_company()` em sequência (ou paralelo)
+   - Combinar CompanyProfile (do site) + WebResearchResult (da busca) no `enrichment_data` da sessão
+   - Estrutura salva no banco: `{ "company_profile": {...}, "web_research": {...} }`
+
+4. **Alimentar pre-fills**: ajustar `interview_agent.py` para usar dados da pesquisa web além do site ao pre-preencher core_0/core_1
+
+5. **Config** (`app/config.py`):
+   - `SEARCH_API_KEY: str = ""` (para API de busca)
+   - Escolher qual API usar (sugestão: Serper API — simples, barata, boa qualidade)
+
+6. **Fallback**: se pesquisa web falhar, fluxo continua normalmente só com dados do site. Nunca bloqueia.
+
+**Automated tests** (todos com mock da API de busca):
+- `test_search_company_returns_results`: mock API → WebResearchResult com campos preenchidos
+- `test_search_company_api_failure`: API falha → retorna WebResearchResult vazio, sem crash
+- `test_enrichment_includes_web_research`: após enrich, session tem company_profile + web_research
+- `test_enrichment_without_search_api_key`: sem chave configurada → skip pesquisa, só scraping
+- `test_web_research_feeds_prefill`: dados da pesquisa aparecem como pre_filled_value em core_1
+
+**Definition of Done**:
+- Enrichment faz scraping do site + pesquisa web sobre a empresa
+- WebResearchResult salvo na sessão junto com CompanyProfile
+- Pre-fills da entrevista usam dados combinados (site + pesquisa)
+- Falha na pesquisa web não bloqueia o fluxo
+- Todos os testes passam
+- Teste manual: empresa real (ex: collectai.com.br) → verificar que pesquisa traz informações além do site
+
+**Status**: `pending`
+
+---
+
+## M5.9: Relatório SOP (substituir AgentConfig)
+
+### T34: Substituir AgentConfig por Relatório SOP estruturado
+
+**Objective**: Substituir a geração do `system_prompt` e `AgentConfig` por um relatório estruturado em JSON (SOP — Standard Operating Procedure) que descreve detalhadamente a empresa, suas políticas de cobrança e recomendações de um especialista.
+
+**Problem it solves**: O output atual (AgentConfig com system_prompt pronto para uso) é muito "caixa preta". O cliente precisa de um relatório/SOP legível e detalhado que:
+- Outro sistema downstream vai consumir para criar o agente real (com seu próprio processo de geração de system_prompt)
+- Serve como documento de referência da política de cobrança da empresa
+- Inclui recomendações de especialista, não apenas extração de dados
+
+**Dependencies**: T30 (nome do agente para agent_identity), T33 (pesquisa web para enrichment_summary)
+
+**Files to create/modify**:
+- `backend/app/models/schemas.py` (OnboardingReport schema)
+- `backend/app/prompts/report_generator.py` (novo — substitui agent_generator.py)
+- `backend/app/services/report_generator.py` (novo — substitui agent_generator.py)
+- `backend/app/routers/agent.py` (adaptar endpoints)
+- `backend/app/prompts/simulation.py` (adaptar para usar SOP)
+- `backend/app/services/simulation.py` (adaptar para usar SOP)
+- `backend/app/models/orm.py` (campo agent_config → onboarding_report)
+- `backend/tests/test_agent_generator.py` → `test_report_generator.py` (reescrever)
+- `backend/tests/test_simulation.py` (adaptar)
+- `backend/tests/test_agent.py` (adaptar endpoints)
+
+**Changes**:
+
+1. **Novo schema** (`app/models/schemas.py`) — `OnboardingReport`:
+   ```
+   OnboardingReport:
+     agent_identity:
+       name: str              # Nome do agente (core_0)
+       avatar_url: str | None # URL da foto/avatar (T31/T32)
+
+     company:
+       name: str
+       segment: str
+       products: str
+       target_audience: str
+       website: str
+
+     enrichment_summary:
+       website_analysis: str      # Resumo do que foi extraído do site
+       web_research: str          # Resumo da pesquisa web (T33)
+
+     collection_profile:
+       debt_type: str             # Recorrente, pontual, mista
+       typical_debtor_profile: str
+       business_specific_objections: str  # core_12
+       payment_verification_process: str  # core_13
+       sector_regulations: str            # core_14
+
+     collection_policies:
+       overdue_definition: str           # core_3 (agora texto livre)
+       discount_policy: str              # core_6
+       installment_policy: str           # core_7
+       interest_policy: str              # core_8
+       penalty_policy: str               # core_9
+       payment_methods: list[str]        # core_2
+       escalation_triggers: list[str]    # core_10
+       escalation_custom_rules: str      # core_10_open
+       collection_flow_description: str  # core_4
+
+     communication:
+       tone_style: str               # core_5
+       prohibited_actions: list[str]  # core_11
+       brand_specific_language: str   # se mencionado
+
+     guardrails:
+       never_do: list[str]
+       never_say: list[str]
+       must_identify_as_ai: bool
+       follow_up_interval_days: int
+       max_attempts_before_stop: int
+
+     expert_recommendations: str
+       # Texto longo (300+ palavras) gerado pelo LLM:
+       # Análise de um especialista em cobrança sobre como seria o processo
+       # ideal de cobrança para esta empresa específica, considerando setor,
+       # tipo de dívida, perfil de devedor, e todas as políticas informadas.
+       # Escrito como um SOP que outra equipe pode usar como base.
+
+     metadata:
+       generated_at: str
+       session_id: str
+       model: str
+       version: int
+   ```
+
+2. **Novo prompt** (`app/prompts/report_generator.py`):
+   - `SYSTEM_PROMPT`: "Você é um consultor especialista em cobrança brasileiro. Recebeu dados de uma empresa e deve gerar um relatório SOP (Standard Operating Procedure) completo e detalhado descrevendo a política de cobrança ideal para esta empresa. O campo expert_recommendations é o mais importante — deve ser uma análise profunda (mínimo 300 palavras) de como um analista de cobrança deveria operar para esta empresa, incluindo recomendações específicas para o setor, tipo de dívida e perfil dos devedores."
+   - `build_prompt(company_profile, web_research, interview_responses) -> str`:
+     - Seções com dados do enrichment (site + pesquisa web)
+     - Todas as respostas da entrevista organizadas por tema
+     - Instrução para preencher o OnboardingReport JSON
+
+3. **Novo serviço** (`app/services/report_generator.py`):
+   - `generate_report(company_profile, web_research, interview_responses, agent_name, avatar_url) -> OnboardingReport`
+   - Chamada LLM com structured output (JSON Schema do OnboardingReport)
+   - Validação com Pydantic
+   - Retry uma vez em caso de falha
+
+4. **Atualizar endpoints** (`app/routers/agent.py`):
+   - `POST /api/v1/sessions/{id}/agent/generate` → gera `OnboardingReport` em vez de `AgentConfig`
+   - `GET /api/v1/sessions/{id}/agent` → retorna `OnboardingReport`
+   - Remover ou simplificar `PUT /agent/adjust`:
+     - Opção A: remover (o relatório é read-only, regenera se precisar)
+     - Opção B: manter mas regenerar o relatório completo com ajustes
+   - Status transitions: `interviewed` → `generating` → `generated`
+
+5. **Atualizar ORM** (`app/models/orm.py`):
+   - Renomear coluna `agent_config` → `onboarding_report` (ou manter o nome e mudar o conteúdo)
+
+6. **Atualizar simulação**:
+   - `app/prompts/simulation.py`: `build_simulation_prompt` recebe `OnboardingReport` em vez de `AgentConfig`. Usa os dados do relatório (tom, políticas, guardrails, expert_recommendations) para instruir o LLM a simular conversas
+   - `app/services/simulation.py`: adaptar assinatura e chamadas
+
+7. **Testes**:
+   - Reescrever `test_agent_generator.py` → `test_report_generator.py`:
+     - `test_onboarding_report_schema_valid`: instância válida do schema
+     - `test_build_report_prompt`: prompt montado sem erros com dados completos
+     - `test_build_report_prompt_without_web_research`: funciona sem pesquisa web
+     - `test_generate_report`: mock LLM → retorna OnboardingReport válido
+     - `test_report_includes_expert_recommendations`: campo tem mínimo 200 chars
+   - Adaptar `test_simulation.py`: usar OnboardingReport no lugar de AgentConfig
+   - Adaptar testes de endpoint (test_agent.py): verificar retorno do relatório
+
+**Definition of Done**:
+- Novo schema `OnboardingReport` definido com todos os campos descritivos
+- Prompt gera relatório SOP focado em análise de especialista (não system_prompt)
+- Endpoint retorna OnboardingReport em vez de AgentConfig
+- Simulação funciona com dados do relatório
+- Campo `expert_recommendations` tem análise detalhada e específica da empresa
+- Antigo AgentConfig e system_prompt removidos do fluxo
+- Todos os testes passam
+- Teste manual: gerar relatório para empresa real → ler expert_recommendations → parece um SOP real de cobrança que outra equipe pode usar?
+
+**Status**: `pending`
+
+---
+
 ## M6: Deploy
 
-### T29: Adicionar CORS no FastAPI
+### T35: Adicionar CORS no FastAPI
 
 **Objective**: Backend aceita requests do frontend Lovable.
 
-**Dependencies**: T28
+**Dependencies**: T34
 
 **Definition of Done**:
 - `CORSMiddleware` adicionado em `app/main.py`
@@ -848,11 +1299,11 @@
 
 ---
 
-### T30: Criar Dockerfile + config Railway
+### T36: Criar Dockerfile + config Railway
 
 **Objective**: Backend pode ser deployado num container com Playwright/Chromium.
 
-**Dependencies**: T29
+**Dependencies**: T35
 
 **Definition of Done**:
 - `Dockerfile` na raiz de `backend/` com Python 3.13 + dependências Playwright
@@ -864,11 +1315,11 @@
 
 ---
 
-### T31: Deploy no Railway + testar URL pública
+### T37: Deploy no Railway + testar URL pública
 
 **Objective**: Backend acessível via URL pública na internet.
 
-**Dependencies**: T30
+**Dependencies**: T36
 
 **Definition of Done**:
 - Backend deployado no Railway (ou Render)
@@ -885,11 +1336,11 @@
 
 > Cada task abaixo inclui um **prompt para o Lovable** com objetivo, endpoints, e Definition of Done. Copie o prompt inteiro para o Lovable.
 
-### T32: Tela de boas-vindas
+### T38: Tela de boas-vindas
 
 **Objective**: Primeira tela do onboarding — coleta dados da empresa e cria sessão no backend.
 
-**Dependencies**: T31
+**Dependencies**: T37
 
 **Lovable Prompt**:
 ```
@@ -936,11 +1387,11 @@ Estilo: limpo, moderno, cards com sombra suave. Cores da marca CollectAI.
 
 ---
 
-### T33: Tela de enriquecimento
+### T39: Tela de enriquecimento
 
 **Objective**: Mostra loading enquanto analisa o site, depois mostra dados extraídos.
 
-**Dependencies**: T32
+**Dependencies**: T38
 
 **Lovable Prompt**:
 ```
@@ -1007,11 +1458,11 @@ Estilo: cards informativos, ícones por campo (empresa, produtos, público), cor
 
 ---
 
-### T34: Tela de entrevista — wizard de perguntas
+### T40: Tela de entrevista — wizard de perguntas
 
 **Objective**: Apresenta perguntas uma por uma, coleta respostas, mostra progresso. Esta é a tela mais complexa.
 
-**Dependencies**: T33
+**Dependencies**: T39
 
 **Lovable Prompt**:
 ```
@@ -1153,11 +1604,11 @@ Microfone discreto mas acessível ao lado do campo de texto.
 
 ---
 
-### T35: Tela de smart defaults
+### T41: Tela de revisão da entrevista
 
-**Objective**: Mostra configurações pré-preenchidas para confirmação/ajuste.
+**Objective**: Mostra resumo das respostas para confirmação antes de gerar o relatório.
 
-**Dependencies**: T34
+**Dependencies**: T40
 
 **Lovable Prompt**:
 ```
@@ -1242,11 +1693,11 @@ no máximo X vezes antes de parar").
 
 ---
 
-### T36: Tela do agente gerado
+### T42: Tela do relatório SOP gerado
 
-**Objective**: Mostra o AgentConfig gerado — system prompt, policies, guardrails. Opção de ajustar.
+**Objective**: Mostra o OnboardingReport gerado — relatório SOP com políticas, recomendações de especialista e identidade do agente.
 
-**Dependencies**: T35
+**Dependencies**: T41
 
 **Lovable Prompt**:
 ```
@@ -1357,11 +1808,11 @@ Estilo: dashboard informativo, seções com ícones, collapsible cards.
 
 ---
 
-### T37: Tela de simulação
+### T43: Tela de simulação
 
 **Objective**: Mostra 2 conversas simuladas como chat — o "AHA Moment" do onboarding.
 
-**Dependencies**: T36
+**Dependencies**: T42
 
 **Lovable Prompt**:
 ```
@@ -1463,11 +1914,11 @@ avatar para agente e devedor, cores distintas por role, scroll suave.
 
 ---
 
-### T38: Integração de fluxo + estado global
+### T44: Integração de fluxo + estado global
 
 **Objective**: Conectar todas as 6 telas com navegação e estado compartilhado (session_id).
 
-**Dependencies**: T32-T37
+**Dependencies**: T38-T43
 
 **Lovable Prompt**:
 ```
@@ -1517,15 +1968,15 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 
 ## M8: Integração Directus (futuro)
 
-### T39: Salvar AgentConfig no Directus
+### T45: Salvar OnboardingReport no Directus
 
-**Objective**: Quando onboarding completa, salvar o AgentConfig na collection de agents do Directus.
+**Objective**: Quando onboarding completa, salvar o OnboardingReport na collection de agents do Directus.
 
-**Dependencies**: T38
+**Dependencies**: T44
 
 **Definition of Done**:
-- Mapear campos do AgentConfig para a collection "agents" no Directus
-- Endpoint ou lógica que envia o AgentConfig para o Directus
+- Mapear campos do OnboardingReport para a collection "agents" no Directus
+- Endpoint ou lógica que envia o OnboardingReport para o Directus
 - Agent aparece na tela de agents da plataforma
 
 **Status**: `pending`
@@ -1564,14 +2015,20 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 | T26 | Refatorar perguntas core + follow-up | M5.5 | T25 | `done` |
 | T27 | Refatorar perguntas dinâmicas | M5.5 | T26 | `done` |
 | T28 | Atualizar prompt de geração | M5.5 | T27 | `done` |
-| T29 | CORS configuration | M6 | T28 | `pending` |
-| T30 | Dockerfile + Railway config | M6 | T29 | `pending` |
-| T31 | Deploy to Railway + verify | M6 | T30 | `pending` |
-| T32 | Tela de Boas-vindas | M7 | T31 | `pending` |
-| T33 | Tela de Enriquecimento | M7 | T32 | `pending` |
-| T34 | Tela de Entrevista (wizard) | M7 | T33 | `pending` |
-| T35 | Tela de Smart Defaults | M7 | T34 | `pending` |
-| T36 | Tela do Agente Gerado | M7 | T35 | `pending` |
-| T37 | Tela de Simulação | M7 | T36 | `pending` |
-| T38 | Integração de fluxo completo | M7 | T37 | `pending` |
-| T39 | Salvar AgentConfig no Directus | M8 | T38 | `pending` |
+| T29 | core_3 texto aberto + core_10 pergunta aberta | M5.6 | T28 | `pending` |
+| T30 | Pergunta de nome do agente | M5.7 | T29 | `pending` |
+| T31 | Upload de foto do agente | M5.7 | T30 | `pending` |
+| T32 | Geração de avatar com API Gemini | M5.7 | T31 | `pending` |
+| T33 | Pesquisa web sobre a empresa | M5.8 | T28 | `pending` |
+| T34 | Relatório SOP (substituir AgentConfig) | M5.9 | T30, T33 | `pending` |
+| T35 | CORS configuration | M6 | T34 | `pending` |
+| T36 | Dockerfile + Railway config | M6 | T35 | `pending` |
+| T37 | Deploy to Railway + verify | M6 | T36 | `pending` |
+| T38 | Tela de Boas-vindas | M7 | T37 | `pending` |
+| T39 | Tela de Enriquecimento | M7 | T38 | `pending` |
+| T40 | Tela de Entrevista (wizard) | M7 | T39 | `pending` |
+| T41 | Tela de Revisão da Entrevista | M7 | T40 | `pending` |
+| T42 | Tela do Relatório SOP | M7 | T41 | `pending` |
+| T43 | Tela de Simulação | M7 | T42 | `pending` |
+| T44 | Integração de fluxo completo | M7 | T43 | `pending` |
+| T45 | Salvar OnboardingReport no Directus | M8 | T44 | `pending` |
