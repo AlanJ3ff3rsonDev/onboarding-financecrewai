@@ -42,12 +42,21 @@ def test_web_research_result_schema():
 # --- Query builder tests ---
 
 
-def test_build_search_queries():
-    """Generates 3 queries containing the company name."""
-    queries = _build_search_queries("Empresa ABC", "https://empresaabc.com.br")
+def test_build_search_queries_with_segment():
+    """With segment, query 3 searches sector collection dynamics."""
+    queries = _build_search_queries("Empresa ABC", "Construção Civil")
     assert len(queries) == 3
-    for q in queries:
-        assert "Empresa ABC" in q
+    assert "Empresa ABC" in queries[0]
+    assert "Empresa ABC" in queries[1]
+    assert "Construção Civil" in queries[2]
+    assert "inadimplência" in queries[2]
+
+
+def test_build_search_queries_no_segment():
+    """Without segment, query 3 falls back to company + market."""
+    queries = _build_search_queries("Empresa ABC")
+    assert len(queries) == 3
+    assert "Empresa ABC" in queries[2]
 
 
 # --- Search query tests ---

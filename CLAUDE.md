@@ -58,8 +58,8 @@ Complete fully before starting the next. Never leave a task half-done without lo
 - **Test with real-world inputs.** Mocks and toy data hide real bugs. Always verify with production-like conditions (real websites, real API responses, real file formats).
 - **Don't approve your own work.** If a task produces visible output, present it to the user before marking `done`.
 
-### Log Everything
-Every task gets a progress.md entry — even failures. Log bugs with severity. Log design decisions in the Decisions Log.
+### Log Everything (but keep it minimal)
+Every task gets a progress.md entry — even failures. Log bugs with severity. Log design decisions in the Decisions Log. **Keep entries short**: only what's needed to understand what was done and why when reading later. No verbose descriptions — bullet points, not paragraphs.
 
 ### Code
 - Type hints on all function signatures, Pydantic models for all schemas

@@ -32,7 +32,9 @@ async def enrich_session(
 
     enrichment_dict = profile.model_dump()
 
-    web_research = await search_company(session.company_name, session.company_website)
+    web_research = await search_company(
+        session.company_name, session.company_website, segment=profile.segment
+    )
     if web_research is not None:
         enrichment_dict["web_research"] = web_research
 

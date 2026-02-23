@@ -16,21 +16,25 @@ logger = logging.getLogger(__name__)
 SERPER_URL = "https://google.serper.dev/search"
 
 
-def _build_search_queries(company_name: str, website_url: str) -> list[str]:
-    """Generate 3 search queries for the company.
+def _build_search_queries(company_name: str, segment: str = "") -> list[str]:
+    """Generate 3 search queries focused on collection-agent context.
 
     Args:
         company_name: Company name.
-        website_url: Company website (unused for now, reserved for future filtering).
+        segment: Business segment from enrichment (e.g. "Construção Civil").
 
     Returns:
         List of 3 query strings.
     """
-    return [
+    queries = [
         f'"{company_name}" empresa',
-        f'"{company_name}" Reclame Aqui OR avaliação OR review',
-        f'"{company_name}" cobrança OR pagamento OR serviços',
+        f'"{company_name}" produtos serviços clientes',
     ]
+    if segment:
+        queries.append(f'"{segment}" inadimplência cobrança perfil devedor')
+    else:
+        queries.append(f'"{company_name}" setor mercado clientes')
+    return queries
 
 
 async def _run_search_query(query: str) -> list[dict]:
@@ -107,12 +111,15 @@ async def _consolidate_snippets(company_name: str, snippets: list[dict]) -> dict
             return WebResearchResult().model_dump()
 
 
-async def search_company(company_name: str, website_url: str) -> dict | None:
+async def search_company(
+    company_name: str, website_url: str, segment: str = ""
+) -> dict | None:
     """Orchestrate web research: search, deduplicate, consolidate.
 
     Args:
         company_name: Company name to search for.
         website_url: Company website URL.
+        segment: Business segment from enrichment (used for sector-specific query).
 
     Returns:
         WebResearchResult dict with 5 fields, or None if no API key or all searches fail.
@@ -121,7 +128,7 @@ async def search_company(company_name: str, website_url: str) -> dict | None:
         logger.info("SEARCH_API_KEY not set, skipping web research")
         return None
 
-    queries = _build_search_queries(company_name, website_url)
+    queries = _build_search_queries(company_name, segment)
 
     # Run all 3 queries in parallel
     results = await asyncio.gather(
