@@ -1,4 +1,4 @@
-"""Web research service using Serper API + LLM consolidation."""
+"""Web research service using SerpApi + LLM consolidation."""
 
 import asyncio
 import json
@@ -13,7 +13,7 @@ from app.prompts.web_research import CONSOLIDATION_SYSTEM_PROMPT, build_consolid
 
 logger = logging.getLogger(__name__)
 
-SERPER_URL = "https://google.serper.dev/search"
+SERPAPI_URL = "https://serpapi.com/search"
 
 
 def _build_search_queries(company_name: str, website_url: str) -> list[str]:
@@ -33,8 +33,8 @@ def _build_search_queries(company_name: str, website_url: str) -> list[str]:
     ]
 
 
-async def _run_serper_query(query: str) -> list[dict]:
-    """Execute a single Serper API search query.
+async def _run_search_query(query: str) -> list[dict]:
+    """Execute a single SerpApi search query.
 
     Args:
         query: Search query string.
@@ -42,21 +42,24 @@ async def _run_serper_query(query: str) -> list[dict]:
     Returns:
         List of dicts with keys: title, link, snippet. Empty list on failure.
     """
-    headers = {
-        "X-API-KEY": settings.SEARCH_API_KEY,
-        "Content-Type": "application/json",
+    params = {
+        "q": query,
+        "api_key": settings.SEARCH_API_KEY,
+        "engine": "google",
+        "gl": "br",
+        "hl": "pt-br",
+        "num": 5,
     }
-    body = {"q": query, "gl": "br", "hl": "pt-br", "num": 5}
 
     for attempt in range(2):
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(SERPER_URL, json=body, headers=headers)
+                resp = await client.get(SERPAPI_URL, params=params)
                 resp.raise_for_status()
                 data = resp.json()
 
             results = []
-            for item in data.get("organic", []):
+            for item in data.get("organic_results", []):
                 results.append({
                     "title": item.get("title", ""),
                     "link": item.get("link", ""),
@@ -64,7 +67,7 @@ async def _run_serper_query(query: str) -> list[dict]:
                 })
             return results
         except (httpx.HTTPError, json.JSONDecodeError, Exception) as exc:
-            logger.warning("Serper query attempt %d failed for '%s': %s", attempt + 1, query, exc)
+            logger.warning("Search query attempt %d failed for '%s': %s", attempt + 1, query, exc)
             if attempt == 0:
                 continue
             return []
@@ -125,7 +128,7 @@ async def search_company(company_name: str, website_url: str) -> dict | None:
 
     # Run all 3 queries in parallel
     results = await asyncio.gather(
-        *[_run_serper_query(q) for q in queries],
+        *[_run_search_query(q) for q in queries],
         return_exceptions=True,
     )
 

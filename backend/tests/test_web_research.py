@@ -1,4 +1,4 @@
-"""Tests for web research service (Serper API + LLM consolidation)."""
+"""Tests for web research service (SerpApi + LLM consolidation)."""
 
 import json
 
@@ -10,7 +10,7 @@ from app.prompts.web_research import build_consolidation_prompt
 from app.services.web_research import (
     _build_search_queries,
     _consolidate_snippets,
-    _run_serper_query,
+    _run_search_query,
     search_company,
 )
 
@@ -50,32 +50,32 @@ def test_build_search_queries():
         assert "Empresa ABC" in q
 
 
-# --- Serper query tests ---
+# --- Search query tests ---
 
 
 @pytest.mark.asyncio
 @patch("app.services.web_research.httpx.AsyncClient")
-async def test_run_serper_query_success(mock_client_cls: MagicMock):
-    """Successful Serper query extracts title/link/snippet from organic results."""
+async def test_run_search_query_success(mock_client_cls: MagicMock):
+    """Successful SerpApi query extracts title/link/snippet from organic_results."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.raise_for_status = MagicMock()
     mock_response.json.return_value = {
-        "organic": [
+        "organic_results": [
             {"title": "Result 1", "link": "https://example.com/1", "snippet": "Snippet 1"},
             {"title": "Result 2", "link": "https://example.com/2", "snippet": "Snippet 2"},
         ]
     }
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.get.return_value = mock_response
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_cls.return_value = mock_client
 
     with patch("app.services.web_research.settings") as mock_settings:
         mock_settings.SEARCH_API_KEY = "test-key"
-        results = await _run_serper_query('"Test Company" empresa')
+        results = await _run_search_query('"Test Company" empresa')
 
     assert len(results) == 2
     assert results[0]["title"] == "Result 1"
@@ -85,21 +85,21 @@ async def test_run_serper_query_success(mock_client_cls: MagicMock):
 
 @pytest.mark.asyncio
 @patch("app.services.web_research.httpx.AsyncClient")
-async def test_run_serper_query_empty_results(mock_client_cls: MagicMock):
-    """Serper query with no organic results returns empty list."""
+async def test_run_search_query_empty_results(mock_client_cls: MagicMock):
+    """SerpApi query with no organic_results returns empty list."""
     mock_response = MagicMock()
     mock_response.raise_for_status = MagicMock()
-    mock_response.json.return_value = {"organic": []}
+    mock_response.json.return_value = {"organic_results": []}
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.get.return_value = mock_response
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client_cls.return_value = mock_client
 
     with patch("app.services.web_research.settings") as mock_settings:
         mock_settings.SEARCH_API_KEY = "test-key"
-        results = await _run_serper_query('"Test" empresa')
+        results = await _run_search_query('"Test" empresa')
 
     assert results == []
 
@@ -145,12 +145,12 @@ async def test_consolidate_snippets(mock_openai_cls: MagicMock):
 
 @pytest.mark.asyncio
 @patch("app.services.web_research._consolidate_snippets", new_callable=AsyncMock)
-@patch("app.services.web_research._run_serper_query", new_callable=AsyncMock)
+@patch("app.services.web_research._run_search_query", new_callable=AsyncMock)
 async def test_search_company_returns_result(
-    mock_serper: AsyncMock, mock_consolidate: AsyncMock
+    mock_search: AsyncMock, mock_consolidate: AsyncMock
 ):
     """Happy path: search_company returns dict with 5 fields."""
-    mock_serper.return_value = [
+    mock_search.return_value = [
         {"title": "R1", "link": "https://a.com", "snippet": "S1"},
         {"title": "R2", "link": "https://b.com", "snippet": "S2"},
     ]
@@ -172,7 +172,7 @@ async def test_search_company_returns_result(
     assert result["sector_context"] == "Sector"
     assert result["reputation_summary"] == "Rep"
     assert result["collection_relevant_insights"] == "Insights"
-    assert mock_serper.call_count == 3  # 3 parallel queries
+    assert mock_search.call_count == 3  # 3 parallel queries
 
 
 @pytest.mark.asyncio
@@ -186,10 +186,10 @@ async def test_search_company_no_api_key():
 
 
 @pytest.mark.asyncio
-@patch("app.services.web_research._run_serper_query", new_callable=AsyncMock)
-async def test_search_company_serper_failure(mock_serper: AsyncMock):
-    """Returns None when all Serper queries fail (empty results)."""
-    mock_serper.return_value = []
+@patch("app.services.web_research._run_search_query", new_callable=AsyncMock)
+async def test_search_company_search_failure(mock_search: AsyncMock):
+    """Returns None when all search queries fail (empty results)."""
+    mock_search.return_value = []
 
     with patch("app.services.web_research.settings") as mock_settings:
         mock_settings.SEARCH_API_KEY = "test-key"
@@ -200,12 +200,12 @@ async def test_search_company_serper_failure(mock_serper: AsyncMock):
 
 @pytest.mark.asyncio
 @patch("app.services.web_research.AsyncOpenAI")
-@patch("app.services.web_research._run_serper_query", new_callable=AsyncMock)
+@patch("app.services.web_research._run_search_query", new_callable=AsyncMock)
 async def test_search_company_llm_failure(
-    mock_serper: AsyncMock, mock_openai_cls: MagicMock
+    mock_search: AsyncMock, mock_openai_cls: MagicMock
 ):
     """Returns empty-fields dict when LLM consolidation fails."""
-    mock_serper.return_value = [
+    mock_search.return_value = [
         {"title": "R1", "link": "https://a.com", "snippet": "S1"},
     ]
 
@@ -225,13 +225,13 @@ async def test_search_company_llm_failure(
 
 @pytest.mark.asyncio
 @patch("app.services.web_research._consolidate_snippets", new_callable=AsyncMock)
-@patch("app.services.web_research._run_serper_query", new_callable=AsyncMock)
+@patch("app.services.web_research._run_search_query", new_callable=AsyncMock)
 async def test_snippets_deduplicated_by_link(
-    mock_serper: AsyncMock, mock_consolidate: AsyncMock
+    mock_search: AsyncMock, mock_consolidate: AsyncMock
 ):
     """Duplicate URLs across queries are deduplicated before consolidation."""
     # All 3 queries return the same URL
-    mock_serper.return_value = [
+    mock_search.return_value = [
         {"title": "Same", "link": "https://same.com", "snippet": "Same snippet"},
     ]
     mock_consolidate.return_value = WebResearchResult().model_dump()
