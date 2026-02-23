@@ -27,16 +27,9 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
     InterviewQuestion(
         question_id="core_3",
         question_text="Quando você considera uma conta vencida?",
-        question_type="select",
-        options=[
-            QuestionOption(value="d0", label="No dia do vencimento (D+0)"),
-            QuestionOption(value="d1", label="1 dia após (D+1)"),
-            QuestionOption(value="d5", label="5 dias após (D+5)"),
-            QuestionOption(value="d15", label="15 dias após (D+15)"),
-            QuestionOption(value="d30", label="30 dias após (D+30)"),
-            QuestionOption(value="outro", label="Outro"),
-        ],
+        question_type="text",
         phase="core",
+        context_hint="Descreva quando e como você considera uma conta vencida. Se existem faixas diferentes (ex: 'até 5 dias é lembrete, 5-30 dias é cobrança firme, acima de 30 vai pro jurídico'), descreva cada uma.",
     ),
     InterviewQuestion(
         question_id="core_4",
@@ -100,6 +93,14 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
             QuestionOption(value="outro", label="Outro"),
         ],
         phase="core",
+    ),
+    InterviewQuestion(
+        question_id="core_10_open",
+        question_text="Além dessas situações, existe algo específico do seu negócio que deveria sempre ser enviado para um humano?",
+        question_type="text",
+        is_required=False,
+        phase="core",
+        context_hint="Exemplos: 'quando o cliente é empresa parceira', 'quando menciona processo no Procon', 'dívida acima de R$10.000'. Se não houver, diga 'não'.",
     ),
     InterviewQuestion(
         question_id="core_11",

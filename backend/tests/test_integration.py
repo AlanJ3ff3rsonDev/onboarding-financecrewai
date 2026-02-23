@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.integration
 
 # ---------------------------------------------------------------------------
-# Realistic answers for all 12 core questions
+# Realistic answers for all 15 core questions (14 sequential + core_10_open)
 # ---------------------------------------------------------------------------
 
 CORE_ANSWERS: dict[str, str] = {
@@ -18,7 +18,12 @@ CORE_ANSWERS: dict[str, str] = {
         "e sistemas bancarios, e analytics de performance de cobranca."
     ),
     "core_2": "pix,boleto,cartao_credito",
-    "core_3": "d5",
+    "core_3": (
+        "Consideramos uma conta vencida 5 dias apos o vencimento para faturas "
+        "pequenas (ate R$2.000). Para valores acima de R$5.000 aguardamos 15 dias "
+        "antes de iniciar a cobranca, pois geralmente sao clientes corporativos "
+        "com processos internos de aprovacao mais longos."
+    ),
     "core_4": (
         "Nosso fluxo de cobranca comeca no D+5 do vencimento com envio automatico "
         "de mensagem via WhatsApp lembrando a pendencia. No D+10 enviamos uma segunda "
@@ -46,6 +51,11 @@ CORE_ANSWERS: dict[str, str] = {
         "aplicada automaticamente apos o primeiro dia de atraso."
     ),
     "core_10": "solicita_humano,divida_alta,agressivo",
+    "core_10_open": (
+        "Quando o cliente e uma empresa parceira estrategica, devemos escalar para "
+        "o gerente comercial antes de qualquer acao de cobranca. Tambem quando o "
+        "devedor menciona processo no Procon ou divida acima de R$10.000."
+    ),
     "core_11": (
         "O agente nunca deve ameacar o devedor com negativacao ou processo judicial. "
         "Nunca mencionar SPC, Serasa ou cartorio. Nunca compartilhar dados do devedor "
@@ -59,6 +69,16 @@ CORE_ANSWERS: dict[str, str] = {
         "semana que vem' (25%), 'quero falar com um gerente/humano' (10%), "
         "'vou processar voces' (5%), e 'estou desempregado' (10%). Para cada caso "
         "temos um script especifico de tratamento."
+    ),
+    "core_13": (
+        "O banco confirma via API e o cliente pode enviar comprovante por WhatsApp. "
+        "Nosso sistema concilia automaticamente pagamentos via PIX em ate 30 minutos. "
+        "Para boletos, a confirmacao pode levar ate 3 dias uteis."
+    ),
+    "core_14": (
+        "Nao temos regulamentacao especifica alem do Codigo de Defesa do Consumidor "
+        "e das normas do Banco Central para cobranca digital. Seguimos as diretrizes "
+        "do CONAR para comunicacao e respeitamos a LGPD em todo o processo."
     ),
 }
 
@@ -202,28 +222,29 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert first_q["question_id"] == "core_1"
     assert first_q["phase"] == "core"
 
-    # ── Step 5: Answer all 12 core questions ─────────────────────────────
+    # ── Step 5: Answer all 15 core questions ─────────────────────────────
     current_qid = "core_1"
     last_data: dict = {}
-    for i in range(1, 13):
-        expected_id = f"core_{i}"
-        assert current_qid == expected_id, (
-            f"Expected {expected_id}, got {current_qid}"
-        )
+    core_answered = 0
+
+    while current_qid in CORE_ANSWERS:
         last_data = _answer_question(
-            client, session_id, current_qid, CORE_ANSWERS[expected_id],
+            client, session_id, current_qid, CORE_ANSWERS[current_qid],
         )
+        core_answered += 1
 
         next_q = last_data.get("next_question")
         if next_q is None:
             break
         current_qid = next_q["question_id"]
 
-    # Verify all 12 core questions answered
+    assert core_answered == 15, f"Expected 15 core answers, got {core_answered}"
+
+    # Verify all 15 core questions answered
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
     assert resp.status_code == 200
     progress = resp.json()
-    assert progress["core_answered"] == 12
+    assert progress["core_answered"] == 15
 
     # ── Step 6: Answer dynamic questions until review ────────────────────
     final_data = _answer_dynamic_questions(client, session_id, last_data)

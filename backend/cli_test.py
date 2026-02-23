@@ -107,7 +107,7 @@ def _present_question(question: dict, number: int | None = None) -> str:
     elif phase == "dynamic":
         label = "   Pergunta adicional (IA)"
     elif number:
-        label = f"   Pergunta {number}/14"
+        label = f"   Pergunta {number}/15"
     else:
         label = f"   {q_id}"
 
@@ -181,7 +181,7 @@ def main() -> None:
 
     # ── Step 4: Interview — core questions ───────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Entrevista — 14 perguntas principais{RESET}")
+    print(f"{BOLD}  Entrevista — 15 perguntas principais{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
 
     data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")

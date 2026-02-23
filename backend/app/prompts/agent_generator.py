@@ -255,6 +255,12 @@ def build_prompt(
     )
     s7_lines.append(
         _format_answer_with_followups(
+            interview_responses, "core_10_open",
+            "Escalação adicional (específico do negócio)"
+        )
+    )
+    s7_lines.append(
+        _format_answer_with_followups(
             interview_responses, "core_11",
             "O que nunca fazer/dizer"
         )

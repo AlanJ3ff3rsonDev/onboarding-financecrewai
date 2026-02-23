@@ -21,7 +21,7 @@
 | **M4** | Simulation | T23-T24 | DONE |
 | **M5** | Integration Test | T25 | DONE |
 | **M5.5** | Refatoração Perguntas | T26-T28 | DONE |
-| **M5.6** | Refinamento de Perguntas | T29 | Pending |
+| **M5.6** | Refinamento de Perguntas | T29 | DONE |
 | **M5.7** | Personalização do Agente (Nome + Avatar) | T30-T32 | Pending |
 | **M5.8** | Enriquecimento Avançado (Pesquisa Web) | T33 | Pending |
 | **M5.9** | Relatório SOP (substituir AgentConfig) | T34 | Pending |
@@ -887,7 +887,7 @@
 - Todos os 118+ testes passam
 - Teste manual: rodar CLI e verificar que core_3 pede texto livre e core_10_open aparece após multiselect
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

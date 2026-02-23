@@ -68,6 +68,40 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-22 — T29 (M5.6): core_3 texto aberto + core_10_open pergunta aberta
+
+**Status**: completed
+
+**What was done**:
+- **core_3 converted from select to text**: Removed 6 fixed options (D+0, D+1, D+5, D+15, D+30, outro). Now captures tiered/complex overdue rules with `context_hint` explaining faixas.
+- **core_10_open added**: New optional text question inserted after core_10 (multiselect escalation). Captures business-specific escalation triggers the checklist doesn't cover.
+- **Total core questions**: 14 → 15 (core_10_open uses non-sequential ID to avoid renumbering)
+- **Agent generator prompt updated**: Section 7 (Guardrails e Escalação) now includes core_10_open as "Escalação adicional (específico do negócio)"
+- **Integration test updated**: Added core_13, core_14, core_10_open to CORE_ANSWERS (were missing). Changed loop from `range(1, 13)` to dynamic `while current_qid in CORE_ANSWERS` to handle non-sequential IDs.
+- **CLI test updated**: Question count label 14→15
+
+**Files modified** (6):
+- `app/prompts/interview.py` — core_3 select→text, added core_10_open after core_10
+- `app/prompts/agent_generator.py` — added core_10_open to section 7 (Guardrails e Escalação)
+- `tests/test_interview.py` — counts 14→15, helpers updated with core_10_open, 2 new tests, 2 tests rewritten (select tests now use core_5 instead of core_3)
+- `tests/test_agent_generator.py` — fixture updated (core_3 text answer, core_10_open entry), assertions for core_10_open in prompt
+- `tests/test_integration.py` — CORE_ANSWERS: core_3 text, added core_10_open/core_13/core_14, loop rewritten
+- `cli_test.py` — question count 14→15
+
+**Tests**:
+- [x] Automated: 53/53 interview tests (51 updated + 2 new: test_core_3_is_text_question, test_core_10_open_exists)
+- [x] Automated: 22/22 agent generator tests
+- [x] Automated: Full suite 120/120 tests passing (no regressions)
+- [x] Integration test passes with real OpenAI API (core_10_open answered correctly)
+
+**Issues found**:
+- **Integration test was missing core_13/core_14 answers**: The M5.5 refactor added these questions but didn't update CORE_ANSWERS in test_integration.py (only 12 answers for 14 questions). The test passed before because the loop was `range(1, 13)` — it never reached core_13/14. Fixed by adding both answers and rewriting the loop.
+
+**Next steps**:
+- Git commit & push. Next task: T30 (Pergunta de nome do agente)
+
+---
+
 ### 2026-02-22 — Planning: M5.6-M5.9 (T29-T34) — Melhorias de Perguntas, Personalização, Pesquisa Web, Relatório SOP
 
 **Status**: completed (planning only, no code changes)

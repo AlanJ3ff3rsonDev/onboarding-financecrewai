@@ -44,7 +44,7 @@ def _sample_interview_responses() -> list[dict]:
         {
             "question_id": "core_3",
             "question_text": "Quando você considera uma conta vencida?",
-            "answer": "d5",
+            "answer": "Consideramos vencida no D+5 para faturas pequenas. Para valores acima de R$5.000, só após 15 dias.",
             "source": "text",
         },
         {
@@ -93,6 +93,12 @@ def _sample_interview_responses() -> list[dict]:
             "question_id": "core_10",
             "question_text": "Quando escalar para humano?",
             "answer": "solicita_humano,divida_alta,agressivo",
+            "source": "text",
+        },
+        {
+            "question_id": "core_10_open",
+            "question_text": "Além dessas situações, existe algo específico do seu negócio que deveria sempre ser enviado para um humano?",
+            "answer": "Quando o cliente é uma empresa parceira estratégica, sempre escalar para o gerente comercial.",
             "source": "text",
         },
         {
@@ -171,6 +177,8 @@ def test_prompt_includes_all_sections():
     assert "amigavel_firme" in prompt  # core_5
     assert "Nunca ameaçar" in prompt  # core_11
     assert "solicita_humano" in prompt  # core_10
+    assert "empresa parceira estratégica" in prompt  # core_10_open
+    assert "Escalação adicional" in prompt  # core_10_open label
     assert "serviço não foi prestado" in prompt  # core_12 (business-specific objections)
     assert "comprovante" in prompt  # core_13 (payment verification)
     assert "CDC" in prompt  # core_14 (regulations)
