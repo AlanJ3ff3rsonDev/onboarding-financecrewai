@@ -38,24 +38,14 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 **Status**: completed
 
 **What was done**:
+- New: `services/web_research.py`, `prompts/web_research.py`, `tests/test_web_research.py`
+- Modified: `config.py` (+SEARCH_API_KEY), `schemas.py` (+WebResearchResult), `routers/enrichment.py`, `interview_agent.py`, `agent_generator.py`, `test_enrichment.py`, `.env.example`
+- 3 parallel Serper queries → deduplicate by URL → GPT-4.1-mini consolidation → stored as `enrichment_data["web_research"]`
+- Queries refocused: empresa geral, produtos/serviços/clientes, dinâmica de cobrança do setor (usa `segment` do scraping)
+- Initially used SerpApi (serpapi.com) by mistake — switched to Serper (serper.dev, 2500 free/month)
 
-1. **config.py**: Added `SEARCH_API_KEY` setting (empty default = graceful skip)
-2. **schemas.py**: Added `WebResearchResult` model (5 string fields, all default "")
-3. **prompts/web_research.py** (new): `CONSOLIDATION_SYSTEM_PROMPT` + `build_consolidation_prompt()`
-4. **services/web_research.py** (new): Full web research service:
-   - `search_company()` — orchestrator: checks API key, runs 3 parallel Serper queries, deduplicates by URL, consolidates via GPT-4.1-mini
-   - `_run_serper_query()` — single POST to Serper API with retry
-   - `_consolidate_snippets()` — LLM consolidation into WebResearchResult with retry
-   - `_build_search_queries()` — 3 queries: general, reputation (Reclame Aqui), collection-relevant
-5. **routers/enrichment.py**: After `extract_company_profile()`, calls `search_company()`. If result is not None, stores it as `enrichment_data["web_research"]`. Backward-compatible.
-6. **services/interview_agent.py**: Extended `_build_enrichment_context()` to include web research fields in LLM context for dynamic questions
-7. **prompts/agent_generator.py**: Extended `_build_company_section()` to include "Pesquisa Web Adicional" subsection in agent generation prompt
-8. **.env.example**: Added `SEARCH_API_KEY`
-9. **tests/test_web_research.py** (new): 11 tests covering schema, queries, Serper, consolidation, orchestrator, deduplication
-10. **tests/test_enrichment.py**: Added `search_company` mock to `test_enrich_session` and `test_enrich_already_done`
-
-**Tests**: 133/133 passing (122 existing + 11 new web research tests)
-**Issues**: None
+**Tests**: 134/134 (122 + 12 new)
+**Manual**: Tested with TS Engenharia — retornou descrição, produtos, contexto do setor imobiliário, perfil de clientes
 
 ---
 
