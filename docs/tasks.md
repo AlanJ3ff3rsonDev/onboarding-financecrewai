@@ -22,7 +22,7 @@
 | **M5.5** | Refatoracao Perguntas | T26-T28 | DONE |
 | **M5.6** | Refinamento de Perguntas | T29 | DONE |
 | **M5.7** | Personalizacao do Agente + Reestruturacao Perguntas | T30-T32 | DONE |
-| **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | Pending |
+| **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | DONE |
 | **M5.9** | Relatorio SOP (substituir AgentConfig) | T34 | Pending |
 | **M6** | Deploy | T35-T37 | Pending |
 | **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
@@ -158,7 +158,7 @@
 
 **Dependencies**: T32
 
-**Status**: `pending` — detalhar antes de implementar
+**Status**: `done`
 
 ---
 

@@ -150,16 +150,19 @@ def _create_session(client: TestClient) -> str:
     return resp.json()["session_id"]
 
 
+@patch("app.routers.enrichment.search_company", new_callable=AsyncMock)
 @patch("app.routers.enrichment.extract_company_profile", new_callable=AsyncMock)
 @patch("app.routers.enrichment.scrape_website", new_callable=AsyncMock)
 def test_enrich_session(
     mock_scrape: AsyncMock,
     mock_extract: AsyncMock,
+    mock_search: AsyncMock,
     client: TestClient,
 ) -> None:
     """POST enrich → status enriched, GET enrichment returns CompanyProfile."""
     mock_scrape.return_value = "Some website text"
     mock_extract.return_value = MOCK_PROFILE
+    mock_search.return_value = None
 
     session_id = _create_session(client)
 
@@ -188,16 +191,19 @@ def test_enrich_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
+@patch("app.routers.enrichment.search_company", new_callable=AsyncMock)
 @patch("app.routers.enrichment.extract_company_profile", new_callable=AsyncMock)
 @patch("app.routers.enrichment.scrape_website", new_callable=AsyncMock)
 def test_enrich_already_done(
     mock_scrape: AsyncMock,
     mock_extract: AsyncMock,
+    mock_search: AsyncMock,
     client: TestClient,
 ) -> None:
     """POST enrich twice returns 409 on second call."""
     mock_scrape.return_value = "Some text"
     mock_extract.return_value = MOCK_PROFILE
+    mock_search.return_value = None
 
     session_id = _create_session(client)
 

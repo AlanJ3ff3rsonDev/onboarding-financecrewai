@@ -6,6 +6,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class WebResearchResult(BaseModel):
+    company_description: str = ""
+    products_and_services: str = ""
+    sector_context: str = ""
+    reputation_summary: str = ""
+    collection_relevant_insights: str = ""
+
+
 class CompanyProfile(BaseModel):
     company_name: str
     segment: str = ""

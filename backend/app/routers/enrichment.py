@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.orm import OnboardingSession
 from app.models.schemas import CompanyProfile
 from app.services.enrichment import extract_company_profile, scrape_website
+from app.services.web_research import search_company
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["enrichment"])
 
@@ -29,11 +30,17 @@ async def enrich_session(
     website_text = await scrape_website(session.company_website)
     profile = await extract_company_profile(session.company_name, website_text)
 
-    session.enrichment_data = profile.model_dump()
+    enrichment_dict = profile.model_dump()
+
+    web_research = await search_company(session.company_name, session.company_website)
+    if web_research is not None:
+        enrichment_dict["web_research"] = web_research
+
+    session.enrichment_data = enrichment_dict
     session.status = "enriched"
     db.commit()
 
-    return {"status": "enriched", "enrichment_data": profile.model_dump()}
+    return {"status": "enriched", "enrichment_data": enrichment_dict}
 
 
 @router.get("/{session_id}/enrichment", response_model=CompanyProfile)

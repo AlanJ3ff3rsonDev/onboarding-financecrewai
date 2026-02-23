@@ -211,6 +211,22 @@ def _build_enrichment_context(enrichment_data: dict) -> str:
         value = enrichment_data.get(field, "")
         if value and isinstance(value, str) and value.strip():
             lines.append(f"- {label}: {value.strip()}")
+
+    # Append web research data if available
+    web_research = enrichment_data.get("web_research")
+    if web_research and isinstance(web_research, dict):
+        wr_labels = {
+            "company_description": "Descrição (pesquisa web)",
+            "products_and_services": "Produtos/Serviços (pesquisa web)",
+            "sector_context": "Contexto do setor",
+            "reputation_summary": "Reputação online",
+            "collection_relevant_insights": "Insights para cobrança",
+        }
+        for field, label in wr_labels.items():
+            value = web_research.get(field, "")
+            if value and isinstance(value, str) and value.strip():
+                lines.append(f"- {label}: {value.strip()}")
+
     return "\n".join(lines) if lines else "Nenhum dado de enriquecimento disponível."
 
 

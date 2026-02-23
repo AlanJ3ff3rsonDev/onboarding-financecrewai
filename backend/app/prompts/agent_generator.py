@@ -142,6 +142,26 @@ def _build_company_section(company_profile: dict | None) -> str:
     for field, label in field_labels.items():
         value = company_profile.get(field, "") or "Não informado"
         lines.append(f"- {label}: {value}")
+
+    # Append web research data if available
+    web_research = company_profile.get("web_research")
+    if web_research and isinstance(web_research, dict):
+        wr_labels = {
+            "company_description": "Descrição da empresa",
+            "products_and_services": "Produtos/Serviços (pesquisa web)",
+            "sector_context": "Contexto do setor",
+            "reputation_summary": "Reputação online",
+            "collection_relevant_insights": "Insights relevantes para cobrança",
+        }
+        wr_lines = []
+        for field, label in wr_labels.items():
+            value = web_research.get(field, "")
+            if value and isinstance(value, str) and value.strip():
+                wr_lines.append(f"- {label}: {value.strip()}")
+        if wr_lines:
+            lines.append("\n### Pesquisa Web Adicional")
+            lines.extend(wr_lines)
+
     return "\n".join(lines)
 
 
