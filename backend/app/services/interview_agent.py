@@ -25,8 +25,8 @@ MAX_FOLLOW_UPS_PER_QUESTION = 2
 
 ENRICHMENT_PREFILL_MAP: dict[str, tuple[str, str]] = {
     "core_1": ("products_description", "Baseado no seu site: {value}"),
-    "core_2": ("payment_methods_mentioned", "Encontrado no site: {value}"),
-    "core_5": ("communication_tone", "Tom detectado no site: {value}"),
+    "core_3": ("payment_methods_mentioned", "Encontrado no site: {value}"),
+    "core_4": ("communication_tone", "Tom detectado no site: {value}"),
 }
 
 

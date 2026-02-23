@@ -84,7 +84,6 @@ class SessionResponse(BaseModel):
     interview_responses: list[Any] | None = None
     agent_config: dict[str, Any] | None = None
     simulation_result: dict[str, Any] | None = None
-    agent_avatar_path: str | None = None
     created_at: datetime
     updated_at: datetime
 

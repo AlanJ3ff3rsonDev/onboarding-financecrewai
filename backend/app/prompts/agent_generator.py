@@ -176,11 +176,11 @@ def build_prompt(
             f"- Nome escolhido para o agente: {agent_name}"
         )
 
-    # Section 1: Company Context
+    # Section 1: Company Context (enrichment)
     sections.append(_build_company_section(company_profile))
 
-    # Section 2: Business Model and Billing
-    s2_lines = ["## 2. Modelo de Negócio e Faturamento"]
+    # Section 2: Modelo de Negócio
+    s2_lines = ["## 2. Modelo de Negócio"]
     s2_lines.append(
         _format_answer_with_followups(
             interview_responses, "core_1", "Produtos/serviços oferecidos"
@@ -188,115 +188,72 @@ def build_prompt(
     )
     s2_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_2", "Métodos de pagamento aceitos"
+            interview_responses, "core_2", "Tipo de cliente (PF/PJ)"
         )
     )
     s2_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_3", "Definição de vencimento"
+            interview_responses, "core_3", "Métodos de pagamento aceitos"
         )
     )
     sections.append("\n".join(s2_lines))
 
-    # Section 3: Debtor Profile
-    s3_lines = ["## 3. Perfil do Devedor"]
+    # Section 3: Processo de Cobrança
+    s3_lines = ["## 3. Processo de Cobrança"]
     s3_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_12", "Objeções específicas do negócio"
+            interview_responses, "core_5", "Fluxo descrito pelo cliente"
         )
     )
     sections.append("\n".join(s3_lines))
 
-    # Section 4: Collection Process
-    s4_lines = ["## 4. Processo de Cobrança Atual"]
+    # Section 4: Tom e Comunicação
+    s4_lines = ["## 4. Tom e Comunicação"]
     s4_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_4", "Fluxo descrito pelo cliente"
+            interview_responses, "core_4", "Tom escolhido"
+        )
+    )
+    s4_lines.append(
+        _format_answer_with_followups(
+            interview_responses, "core_8",
+            "O que nunca fazer/dizer (segundo o cliente)"
         )
     )
     sections.append("\n".join(s4_lines))
 
-    # Section 5: Tone and Communication
-    s5_lines = ["## 5. Tom e Comunicação"]
+    # Section 5: Políticas de Negociação
+    s5_lines = ["## 5. Políticas de Negociação"]
     s5_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_5", "Tom escolhido"
-        )
-    )
-    s5_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_11",
-            "O que nunca fazer/dizer (segundo o cliente)"
+            interview_responses, "core_6", "Política de desconto/condições especiais"
         )
     )
     sections.append("\n".join(s5_lines))
 
-    # Section 6: Negotiation Policies (text-based)
-    s6_lines = ["## 6. Políticas de Negociação"]
+    # Section 6: Guardrails e Escalação
+    s6_lines = ["## 6. Guardrails e Escalação"]
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_6", "Política de desconto"
+            interview_responses, "core_7", "Gatilhos de escalação"
         )
     )
     s6_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_7", "Política de parcelamento"
-        )
-    )
-    s6_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_8", "Política de juros"
-        )
-    )
-    s6_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_9", "Política de multa"
+            interview_responses, "core_8",
+            "O que nunca fazer/dizer"
         )
     )
     sections.append("\n".join(s6_lines))
 
-    # Section 7: Guardrails and Escalation
-    s7_lines = ["## 7. Guardrails e Escalação"]
-    s7_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_10", "Gatilhos de escalação"
+    # Section 7: Contexto Adicional (conditional — only if core_9 answered)
+    core_9_answer = _get_answer_by_id(interview_responses, "core_9")
+    skip_answers = {"nao", "não", "nao respondida", "não respondida", "n", "passo"}
+    if core_9_answer.strip().lower() not in skip_answers:
+        sections.append(
+            f"## 7. Contexto Adicional do Negócio\n"
+            f"- {core_9_answer}"
         )
-    )
-    s7_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_10_open",
-            "Escalação adicional (específico do negócio)"
-        )
-    )
-    s7_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_11",
-            "O que nunca fazer/dizer"
-        )
-    )
-    s7_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_14",
-            "Regulamentação setorial"
-        )
-    )
-    sections.append("\n".join(s7_lines))
-
-    # Section 8: Operações e Cenários
-    s8_lines = ["## 8. Operações e Cenários"]
-    s8_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_12",
-            "Objeções específicas do negócio"
-        )
-    )
-    s8_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_13",
-            "Verificação e comprovação de pagamento"
-        )
-    )
-    sections.append("\n".join(s8_lines))
 
     # Additional Context: dynamic questions + remaining follow-ups
     dynamic_responses = _get_dynamic_responses(interview_responses)
@@ -327,13 +284,10 @@ def build_prompt(
     sections.append(
         "## Dicas de Mapeamento\n"
         "Use estas correspondências ao preencher o JSON:\n"
-        '- core_5: "formal" → tone.style "formal", '
+        '- core_4: "formal" → tone.style "formal", '
         '"amigavel_firme" → "friendly", '
         '"empatico" → "empathetic", '
         '"direto_assertivo" → "assertive"\n'
-        "- core_6/7/8/9: respostas abertas — extraia a política descrita pelo "
-        "cliente e preencha discount_policy, installment_policy, interest_policy, "
-        "penalty_policy como texto descritivo resumido\n"
         '- agent_type: use "compliant" por padrão\n'
         "- tools: inclua send_whatsapp_message, check_payment_status, "
         "escalate_to_human, schedule_follow_up como base. "

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.integration
 
 # ---------------------------------------------------------------------------
-# Realistic answers for all 15 core questions (14 sequential + core_10_open)
+# Realistic answers for all 10 core questions
 # ---------------------------------------------------------------------------
 
 CORE_ANSWERS: dict[str, str] = {
@@ -18,14 +18,10 @@ CORE_ANSWERS: dict[str, str] = {
         "automatizados, painel de gestao de inadimplencia, integracao com ERPs "
         "e sistemas bancarios, e analytics de performance de cobranca."
     ),
-    "core_2": "pix,boleto,cartao_credito",
-    "core_3": (
-        "Consideramos uma conta vencida 5 dias apos o vencimento para faturas "
-        "pequenas (ate R$2.000). Para valores acima de R$5.000 aguardamos 15 dias "
-        "antes de iniciar a cobranca, pois geralmente sao clientes corporativos "
-        "com processos internos de aprovacao mais longos."
-    ),
-    "core_4": (
+    "core_2": "ambos",
+    "core_3": "pix,boleto,cartao",
+    "core_4": "amigavel_firme",
+    "core_5": (
         "Nosso fluxo de cobranca comeca no D+5 do vencimento com envio automatico "
         "de mensagem via WhatsApp lembrando a pendencia. No D+10 enviamos uma segunda "
         "mensagem com opcoes de parcelamento. No D+15 um operador humano liga para o "
@@ -33,53 +29,13 @@ CORE_ANSWERS: dict[str, str] = {
         "para cobranca juridica. Atualmente temos 10 pessoas na operacao de cobranca "
         "e queremos reduzir para 3 com a automacao."
     ),
-    "core_5": "amigavel_firme",
-    "core_6": (
-        "Oferecemos ate 10% de desconto para pagamento a vista, mas apenas quando "
-        "o devedor demonstra resistencia. Nao oferecemos desconto proativamente. "
-        "Para parcelamento, o desconto maximo e de 5%."
-    ),
-    "core_7": (
-        "Parcelamos em ate 12 vezes, com parcela minima de R$50. "
-        "Acima de R$2.000, podemos estender para 18 parcelas mediante aprovacao."
-    ),
-    "core_8": (
-        "Cobramos juros de 1% ao mes sobre o valor total da divida, "
-        "calculados de forma simples a partir da data de vencimento."
-    ),
+    "core_6": "sim",
+    "core_7": "solicita_humano,divida_alta,agressivo",
+    "core_8": "ameacar,prometer_falso,linguagem_agressiva,fora_horario",
     "core_9": (
-        "Cobramos multa de 2% sobre o valor da parcela vencida, "
-        "aplicada automaticamente apos o primeiro dia de atraso."
-    ),
-    "core_10": "solicita_humano,divida_alta,agressivo",
-    "core_10_open": (
         "Quando o cliente e uma empresa parceira estrategica, devemos escalar para "
-        "o gerente comercial antes de qualquer acao de cobranca. Tambem quando o "
-        "devedor menciona processo no Procon ou divida acima de R$10.000."
-    ),
-    "core_11": (
-        "O agente nunca deve ameacar o devedor com negativacao ou processo judicial. "
-        "Nunca mencionar SPC, Serasa ou cartorio. Nunca compartilhar dados do devedor "
-        "com terceiros. Nunca usar linguagem agressiva ou intimidadora. Nunca prometer "
-        "descontos que nao foram autorizados. Nunca ligar fora do horario comercial "
-        "(08:00-20:00 segunda a sexta)."
-    ),
-    "core_12": (
-        "As razoes mais comuns sao: 'ja paguei essa conta' (cerca de 30% dos casos), "
-        "'nao reconheco essa divida' (20%), 'nao tenho dinheiro agora mas vou pagar "
-        "semana que vem' (25%), 'quero falar com um gerente/humano' (10%), "
-        "'vou processar voces' (5%), e 'estou desempregado' (10%). Para cada caso "
-        "temos um script especifico de tratamento."
-    ),
-    "core_13": (
-        "O banco confirma via API e o cliente pode enviar comprovante por WhatsApp. "
-        "Nosso sistema concilia automaticamente pagamentos via PIX em ate 30 minutos. "
-        "Para boletos, a confirmacao pode levar ate 3 dias uteis."
-    ),
-    "core_14": (
-        "Nao temos regulamentacao especifica alem do Codigo de Defesa do Consumidor "
-        "e das normas do Banco Central para cobranca digital. Seguimos as diretrizes "
-        "do CONAR para comunicacao e respeitamos a LGPD em todo o processo."
+        "o gerente comercial. Nao temos regulamentacao especifica alem do CDC. "
+        "As objecoes mais comuns sao 'ja paguei' e 'nao reconheco essa divida'."
     ),
 }
 
@@ -239,13 +195,13 @@ def test_full_onboarding_flow(client: TestClient) -> None:
             break
         current_qid = next_q["question_id"]
 
-    assert core_answered == 16, f"Expected 16 core answers, got {core_answered}"
+    assert core_answered == 10, f"Expected 10 core answers, got {core_answered}"
 
-    # Verify all 16 core questions answered
+    # Verify all 10 core questions answered
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
     assert resp.status_code == 200
     progress = resp.json()
-    assert progress["core_answered"] == 16
+    assert progress["core_answered"] == 10
 
     # ── Step 6: Answer dynamic questions until review ────────────────────
     final_data = _answer_dynamic_questions(client, session_id, last_data)

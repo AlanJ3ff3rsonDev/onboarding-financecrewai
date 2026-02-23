@@ -20,35 +20,32 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
     ),
     InterviewQuestion(
         question_id="core_2",
+        question_text="Seus clientes são pessoa física, jurídica ou ambos?",
+        question_type="select",
+        options=[
+            QuestionOption(value="pf", label="Pessoa física"),
+            QuestionOption(value="pj", label="Pessoa jurídica"),
+            QuestionOption(value="ambos", label="Ambos"),
+        ],
+        phase="core",
+    ),
+    InterviewQuestion(
+        question_id="core_3",
         question_text="Como seus clientes normalmente pagam?",
         question_type="multiselect",
         options=[
             QuestionOption(value="pix", label="PIX"),
             QuestionOption(value="boleto", label="Boleto"),
-            QuestionOption(value="cartao_credito", label="Cartão de crédito"),
-            QuestionOption(value="transferencia", label="Transferência bancária"),
+            QuestionOption(value="cartao", label="Cartão"),
+            QuestionOption(value="transferencia", label="Transferência"),
             QuestionOption(value="dinheiro", label="Dinheiro"),
             QuestionOption(value="outro", label="Outro"),
         ],
         phase="core",
     ),
     InterviewQuestion(
-        question_id="core_3",
-        question_text="Quando você considera uma conta vencida?",
-        question_type="text",
-        phase="core",
-        context_hint="Descreva quando e como você considera uma conta vencida. Se existem faixas diferentes (ex: 'até 5 dias é lembrete, 5-30 dias é cobrança firme, acima de 30 vai pro jurídico'), descreva cada uma.",
-    ),
-    InterviewQuestion(
         question_id="core_4",
-        question_text="Descreva seu fluxo de cobrança atual — desde o primeiro atraso até a resolução",
-        question_type="text",
-        phase="core",
-        context_hint="Quanto mais detalhes você fornecer, melhor o agente vai replicar seu processo.",
-    ),
-    InterviewQuestion(
-        question_id="core_5",
-        question_text="Qual tom o agente deve usar?",
+        question_text="Qual tom o agente deve usar nas conversas?",
         question_type="select",
         options=[
             QuestionOption(value="formal", label="Formal"),
@@ -60,36 +57,26 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
         phase="core",
     ),
     InterviewQuestion(
-        question_id="core_6",
-        question_text="Vocês oferecem desconto para pagamento? Se sim, como funciona?",
+        question_id="core_5",
+        question_text="Como funciona o processo de cobrança hoje?",
         question_type="text",
         phase="core",
-        context_hint="Exemplos: 'oferecemos até 10% para pagamento à vista', 'só oferecemos desconto quando o devedor resiste', 'não oferecemos desconto'.",
+        context_hint="Quanto mais detalhes você fornecer, melhor o agente vai replicar seu processo.",
+    ),
+    InterviewQuestion(
+        question_id="core_6",
+        question_text="O agente pode oferecer desconto ou condição especial?",
+        question_type="select",
+        options=[
+            QuestionOption(value="sim", label="Sim"),
+            QuestionOption(value="nao", label="Não"),
+            QuestionOption(value="depende", label="Depende do caso"),
+        ],
+        phase="core",
     ),
     InterviewQuestion(
         question_id="core_7",
-        question_text="Vocês oferecem parcelamento? Se sim, como funciona?",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: 'parcelamos em até 12x', 'parcela mínima de R$50', 'não oferecemos parcelamento'.",
-    ),
-    InterviewQuestion(
-        question_id="core_8",
-        question_text="Vocês cobram juros por atraso? Se sim, como funciona o cálculo?",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: 'juros de 1% ao mês sobre o valor total', 'juros compostos', 'não cobramos juros'.",
-    ),
-    InterviewQuestion(
-        question_id="core_9",
-        question_text="Vocês cobram multa por atraso? Se sim, como funciona?",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: 'multa de 2% sobre o valor da parcela', 'multa fixa de R$10', 'não cobramos multa'.",
-    ),
-    InterviewQuestion(
-        question_id="core_10",
-        question_text="Quando o agente deve escalar para um humano?",
+        question_text="Quando o agente deve passar a cobrança para um humano?",
         question_type="multiselect",
         options=[
             QuestionOption(value="solicita_humano", label="Devedor solicita humano"),
@@ -103,40 +90,26 @@ CORE_QUESTIONS: list[InterviewQuestion] = [
         phase="core",
     ),
     InterviewQuestion(
-        question_id="core_10_open",
-        question_text="Além dessas situações, existe algo específico do seu negócio que deveria sempre ser enviado para um humano?",
+        question_id="core_8",
+        question_text="O que o agente NUNCA deve fazer ou dizer?",
+        question_type="multiselect",
+        options=[
+            QuestionOption(value="ameacar", label="Ameaçar o devedor"),
+            QuestionOption(value="prometer_falso", label="Prometer algo que não pode cumprir"),
+            QuestionOption(value="mencionar_outros", label="Mencionar outros devedores"),
+            QuestionOption(value="linguagem_agressiva", label="Usar linguagem agressiva"),
+            QuestionOption(value="fora_horario", label="Contatar fora do horário"),
+            QuestionOption(value="outro", label="Outro"),
+        ],
+        phase="core",
+    ),
+    InterviewQuestion(
+        question_id="core_9",
+        question_text="Tem algo específico do seu negócio que o agente precisa saber?",
         question_type="text",
         is_required=False,
         phase="core",
-        context_hint="Exemplos: 'quando o cliente é empresa parceira', 'quando menciona processo no Procon', 'dívida acima de R$10.000'. Se não houver, diga 'não'.",
-    ),
-    InterviewQuestion(
-        question_id="core_11",
-        question_text="Coisas que o agente NUNCA deve fazer ou dizer",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: nunca ameaçar, nunca mencionar nome de outros devedores, nunca prometer algo que não pode cumprir.",
-    ),
-    InterviewQuestion(
-        question_id="core_12",
-        question_text="Existe alguma objeção ou situação específica do seu negócio que os clientes costumam usar para não pagar?",
-        question_type="text",
-        phase="core",
-        context_hint="Objeções genéricas (como 'já paguei' ou 'não reconheço') o agente já sabe lidar. Queremos saber se há algo particular do seu setor — ex: 'o serviço não foi prestado', 'estou esperando reembolso do plano de saúde'.",
-    ),
-    InterviewQuestion(
-        question_id="core_13",
-        question_text="Como vocês sabem se um cliente pagou? Como ele pode comprovar o pagamento?",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: 'conferimos no sistema ERP', 'o cliente envia comprovante por WhatsApp', 'o banco confirma automaticamente'.",
-    ),
-    InterviewQuestion(
-        question_id="core_14",
-        question_text="Existe alguma regulamentação específica do seu setor que impacta a cobrança?",
-        question_type="text",
-        phase="core",
-        context_hint="Exemplos: 'não podemos cobrar antes de 30 dias por lei', 'regulação da ANS impede corte imediato', 'LGPD limita o que podemos dizer'. Se não houver, diga 'não'.",
+        context_hint="Exemplos: regulamentações do setor, objeções comuns dos clientes, processos internos específicos. Se não houver, pode pular.",
     ),
 ]
 
@@ -144,7 +117,6 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
     "business_model": [
         "A cobrança é recorrente (assinatura/mensalidade) ou pontual?",
         "Qual o ticket médio das dívidas que você cobra?",
-        "Seus clientes são pessoas físicas (B2C) ou empresas (B2B)?",
     ],
     "debtor_profile": [
         "Existe um relacionamento contínuo com o devedor (risco de churn)?",
@@ -154,21 +126,9 @@ DYNAMIC_QUESTION_BANK: dict[str, list[str]] = {
         "Existem regras diferentes de negociação por faixa de valor ou tempo de atraso da dívida?",
         "Qual a abordagem quando o devedor pede condições fora do padrão?",
     ],
-    "legal_judicial": [
-        "Você tem um processo de cobrança judicial para dívidas maiores?",
-        "Acima de qual valor a dívida vai para cobrança judicial?",
-    ],
-    "segmentation": [
-        "Você segmenta as dívidas por valor ou tempo de atraso?",
-        "Existem regras diferentes para segmentos diferentes?",
-    ],
     "brand_language": [
         "Existem termos ou expressões específicas da sua marca que o agente deve usar?",
         "Há algum jargão do seu setor que o agente precisa conhecer?",
-    ],
-    "payment_operations": [
-        "Como funciona o processo de baixa de pagamento no seu sistema?",
-        "Quanto tempo leva para um pagamento ser confirmado no seu sistema?",
     ],
 }
 

@@ -43,92 +43,56 @@ def _sample_interview_responses() -> list[dict]:
         },
         {
             "question_id": "core_2",
-            "question_text": "Como seus clientes normalmente pagam?",
-            "answer": "pix,boleto,cartao_credito",
+            "question_text": "Seus clientes são pessoa física, jurídica ou ambos?",
+            "answer": "ambos",
             "source": "text",
         },
         {
             "question_id": "core_3",
-            "question_text": "Quando você considera uma conta vencida?",
-            "answer": "Consideramos vencida no D+5 para faturas pequenas. Para valores acima de R$5.000, só após 15 dias.",
+            "question_text": "Como seus clientes normalmente pagam?",
+            "answer": "pix,boleto,cartao",
             "source": "text",
         },
         {
             "question_id": "core_4",
-            "question_text": "Descreva seu fluxo de cobrança atual",
-            "answer": "Mandamos WhatsApp no D+5, ligamos no D+15, cobrança judicial no D+60",
+            "question_text": "Qual tom o agente deve usar nas conversas?",
+            "answer": "amigavel_firme",
             "source": "text",
         },
         {
-            "question_id": "followup_core_4_1",
+            "question_id": "followup_core_5_1",
             "question_text": "Quantas pessoas trabalham na sua operação de cobrança?",
             "answer": "10 pessoas na operação",
             "source": "text",
         },
         {
             "question_id": "core_5",
-            "question_text": "Qual tom o agente deve usar?",
-            "answer": "amigavel_firme",
+            "question_text": "Como funciona o processo de cobrança hoje?",
+            "answer": "Mandamos WhatsApp no D+5, ligamos no D+15, cobrança judicial no D+60",
             "source": "text",
         },
         {
             "question_id": "core_6",
-            "question_text": "Vocês oferecem desconto para pagamento? Se sim, como funciona?",
-            "answer": "Oferecemos até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
+            "question_text": "O agente pode oferecer desconto ou condição especial?",
+            "answer": "sim",
             "source": "text",
         },
         {
             "question_id": "core_7",
-            "question_text": "Vocês oferecem parcelamento? Se sim, como funciona?",
-            "answer": "Parcelamos em até 12x, com parcela mínima de R$50",
-            "source": "text",
-        },
-        {
-            "question_id": "core_8",
-            "question_text": "Vocês cobram juros por atraso? Se sim, como funciona o cálculo?",
-            "answer": "Juros de 1% ao mês sobre o valor total da dívida",
-            "source": "text",
-        },
-        {
-            "question_id": "core_9",
-            "question_text": "Vocês cobram multa por atraso? Se sim, como funciona?",
-            "answer": "Multa de 2% sobre o valor da parcela vencida",
-            "source": "text",
-        },
-        {
-            "question_id": "core_10",
-            "question_text": "Quando escalar para humano?",
+            "question_text": "Quando o agente deve passar a cobrança para um humano?",
             "answer": "solicita_humano,divida_alta,agressivo",
             "source": "text",
         },
         {
-            "question_id": "core_10_open",
-            "question_text": "Além dessas situações, existe algo específico do seu negócio que deveria sempre ser enviado para um humano?",
-            "answer": "Quando o cliente é uma empresa parceira estratégica, sempre escalar para o gerente comercial.",
+            "question_id": "core_8",
+            "question_text": "O que o agente NUNCA deve fazer ou dizer?",
+            "answer": "ameacar,prometer_falso,linguagem_agressiva",
             "source": "text",
         },
         {
-            "question_id": "core_11",
-            "question_text": "O que nunca fazer/dizer?",
-            "answer": "Nunca ameaçar, nunca mencionar SPC/Serasa, nunca ligar fora do horário",
-            "source": "text",
-        },
-        {
-            "question_id": "core_12",
-            "question_text": "Objeções específicas do negócio?",
-            "answer": "Clientes dizem que o serviço não foi prestado conforme contratado",
-            "source": "text",
-        },
-        {
-            "question_id": "core_13",
-            "question_text": "Como vocês sabem se um cliente pagou?",
-            "answer": "O banco confirma via API e o cliente pode enviar comprovante por WhatsApp",
-            "source": "text",
-        },
-        {
-            "question_id": "core_14",
-            "question_text": "Regulamentação específica do setor?",
-            "answer": "Não temos regulamentação específica além do CDC",
+            "question_id": "core_9",
+            "question_text": "Tem algo específico do seu negócio que o agente precisa saber?",
+            "answer": "Clientes dizem que o serviço não foi prestado conforme contratado. Regulamentação do CDC aplica.",
             "source": "text",
         },
         {
@@ -175,30 +139,23 @@ def test_prompt_includes_all_sections():
     # Section headings
     assert "Contexto da Empresa" in prompt
     assert "Modelo de Negócio" in prompt
-    assert "Perfil do Devedor" in prompt
     assert "Processo de Cobrança" in prompt
     assert "Tom e Comunicação" in prompt
     assert "Políticas de Negociação" in prompt
     assert "Guardrails" in prompt
-    assert "Operações e Cenários" in prompt
 
     # Key interview answers present
     assert "Software de cobrança automatizada" in prompt  # core_1
-    assert "amigavel_firme" in prompt  # core_5
-    assert "Nunca ameaçar" in prompt  # core_11
-    assert "solicita_humano" in prompt  # core_10
-    assert "empresa parceira estratégica" in prompt  # core_10_open
-    assert "Escalação adicional" in prompt  # core_10_open label
-    assert "serviço não foi prestado" in prompt  # core_12 (business-specific objections)
-    assert "comprovante" in prompt  # core_13 (payment verification)
-    assert "CDC" in prompt  # core_14 (regulations)
+    assert "amigavel_firme" in prompt  # core_4 (tone)
+    assert "ameacar" in prompt  # core_8 (never-do)
+    assert "solicita_humano" in prompt  # core_7 (escalation)
+    assert "serviço não foi prestado" in prompt  # core_9 (business-specific)
 
-    # Financial policy answers (now text-based)
-    assert "10% de desconto" in prompt  # core_6 text answer
-    assert "12x" in prompt  # core_7 text answer
+    # Contexto Adicional do Negócio (core_9 answered)
+    assert "Contexto Adicional do Negócio" in prompt
 
     # Follow-up answers included
-    assert "10 pessoas na operação" in prompt  # followup_core_4_1
+    assert "10 pessoas na operação" in prompt  # followup_core_5_1
 
     # Dynamic questions included
     assert "ticket médio" in prompt  # dynamic_1

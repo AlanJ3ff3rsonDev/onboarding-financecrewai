@@ -6,7 +6,7 @@
 |-------|-------|
 | **Status** | Active |
 | **Created** | 2026-02-19 |
-| **Updated** | 2026-02-22 |
+| **Updated** | 2026-02-23 |
 | **PRD Reference** | `docs/PRD.md` |
 
 ---
@@ -32,7 +32,6 @@
 | Service | Key | Purpose |
 |---------|-----|---------|
 | **OpenAI** | `OPENAI_API_KEY` | All LLM calls + transcription |
-| **Google** | `GOOGLE_API_KEY` | Gemini API — avatar image generation (T32) |
 | **Search** | `SEARCH_API_KEY` | Web search API (Serper/Google CSE) — company research (T33) |
 
 ---
@@ -67,7 +66,6 @@ backend/
 │   │   ├── web_research.py        # search_company() — web search enrichment (T33)
 │   │   ├── interview_agent.py     # LangGraph state machine (InterviewState)
 │   │   ├── report_generator.py    # generate_report() — OnboardingReport SOP (T34, replaces agent_generator)
-│   │   ├── avatar_generator.py    # generate_avatar() — Gemini image generation (T32)
 │   │   ├── simulation.py          # generate_simulation()
 │   │   └── transcription.py       # transcribe_audio()
 │   │
@@ -85,11 +83,12 @@ backend/
     ├── test_audio.py              # 11 tests
     ├── test_agent_config.py       # 3 tests
     ├── test_agent_generator.py    # 17 tests
+    ├── test_avatar.py             # 7 tests (to be removed in T32)
     ├── test_simulation.py         # 12 tests
     └── test_integration.py        # 1 test (real OpenAI API, @pytest.mark.integration)
 ```
 
-**Total: 118 tests passing** (116 unit + 1 integration + 1 pending update for T29-T34)
+**Total: 130 tests passing** (122 unit + 1 integration + 7 avatar — avatar tests removed in T32)
 
 ---
 
@@ -107,7 +106,6 @@ backend/
 | `enrichment_data` | JSON | CompanyProfile from enrichment |
 | `interview_state` | JSON | LangGraph state (questions, answers, phase) |
 | `interview_responses` | JSON | Clean list of all Q&A pairs |
-| `agent_avatar_path` | TEXT (nullable) | Path to agent avatar image (T31) |
 | `agent_config` | JSON | Generated OnboardingReport SOP (T34, replaces AgentConfig) |
 | `simulation_result` | JSON | 2 simulated conversations |
 | `created_at` | DATETIME | Session creation timestamp |
@@ -155,9 +153,6 @@ Base path: `/api/v1`
 |--------|------|-------------|---------|----------|
 | `POST` | `/sessions/{id}/agent/generate` | Generate SOP report | — | `{ status: "generated", onboarding_report }` |
 | `GET` | `/sessions/{id}/agent` | Get report | — | OnboardingReport JSON |
-| `POST` | `/sessions/{id}/agent/avatar/upload` | Upload avatar | Multipart file | `{ avatar_url }` |
-| `POST` | `/sessions/{id}/agent/avatar/generate` | Generate 2 avatar options (Gemini) | — | `{ options: [{ id, url }] }` |
-| `POST` | `/sessions/{id}/agent/avatar/select` | Select avatar option | `{ option_id }` | `{ avatar_url }` |
 
 ### Simulation
 
@@ -266,8 +261,7 @@ When no next question:
 ```json
 {
   "agent_identity": {
-    "name": "Sofia",
-    "avatar_url": "/uploads/avatars/session-id.png"
+    "name": "Sofia"
   },
   "company": {
     "name": "CollectAI",
@@ -386,13 +380,13 @@ website URL + company name
 
 **Flow**:
 ```
-initialize → 16 core questions (with up to 2 follow-ups each, no follow-ups on dynamic)
+initialize → 10 core questions (with up to 2 follow-ups each, no follow-ups on dynamic)
   → dynamic phase (LLM generates up to 3 questions, evaluates completeness)
   → review phase (user confirms answers + optional notes)
   → complete
 ```
 
-**Enrichment pre-fill**: core_1 (products), core_2 (payment methods), core_5 (tone) — applied at pop time.
+**Enrichment pre-fill**: core_1 (products), core_3 (payment methods), core_4 (tone) — applied at pop time.
 
 **Frustration detection**: Hardcoded signals (13 Portuguese phrases) skip follow-up without LLM call.
 
@@ -409,23 +403,14 @@ company_name + website
 ### 6.4 Report Generator (planned — T34, replaces Agent Generator)
 
 ```
-CompanyProfile + WebResearchResult + interview_responses + agent_name + avatar_url
+CompanyProfile + WebResearchResult + interview_responses + agent_name
   → build_prompt() — enrichment sections + all interview answers
   → GPT-4.1-mini structured output → OnboardingReport (SOP)
   → Includes expert_recommendations (300+ words)
   → 2-attempt retry
 ```
 
-### 6.5 Avatar Generator (planned — T32)
-
-```
-agent_name → detect gender (heuristic for Brazilian names)
-  → Gemini API → 2 realistic avatar images (light/dark skin, professional attire)
-  → Save to uploads/avatars/
-  → User selects one
-```
-
-### 6.6 Simulation Service
+### 6.5 Simulation Service
 
 ```
 OnboardingReport → build_simulation_prompt() — SOP data + scenario instructions
@@ -434,7 +419,7 @@ OnboardingReport → build_simulation_prompt() — SOP data + scenario instructi
   → 2-attempt retry
 ```
 
-### 6.5 Transcription Service
+### 6.6 Transcription Service
 
 ```
 audio bytes + content_type → validate (format, size <25MB)
@@ -453,7 +438,7 @@ audio bytes + content_type → validate (format, size <25MB)
 |------|---------|
 | **CORS** | `portal.financecrew.ai` + `localhost:*` (dev) |
 | **Runtime** | Python 3.13 + Playwright Chromium |
-| **Env vars** | `OPENAI_API_KEY`, `ALLOWED_ORIGINS`, `DATABASE_URL` (optional) |
+| **Env vars** | `OPENAI_API_KEY`, `SEARCH_API_KEY`, `ALLOWED_ORIGINS`, `DATABASE_URL` (optional) |
 | **Database** | SQLite (MVP) → PostgreSQL (production) |
 | **Platform** | Railway (recommended) or Render |
 
@@ -566,13 +551,13 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 
 | Decision | Reason |
 |----------|--------|
-| 16 core questions (expanded from PRD's 10) | Added juros, multa, payment verification, regulations, agent name, escalation open. Financial questions are open text. |
+| 10 core questions (simplified from 16) | Financial details (juros, multa, parcelamento) come from a separate spreadsheet. Interview focuses on operational context with mostly select/multiselect for speed. |
 | Max 3 dynamic questions (reduced from 8) | Agent is already expert — fewer but better targeted questions needed |
 | No follow-ups on dynamic phase | Reduces interview fatigue; dynamic answers are already contextual |
 | Frustration detection (hardcoded signals) | 13 Portuguese phrases skip follow-up without LLM call |
 | OnboardingReport SOP replaces AgentConfig | Output is a structured report for downstream consumption, not a ready-to-use system_prompt |
 | Web research in enrichment | Website alone doesn't capture full context; search adds reputation, sector info |
-| Avatar generation via Gemini | Consistent professional style, 2 options per gender, realistic |
+| Avatar removed from onboarding | Avatar upload/selection handled in the platform (Directus), not during onboarding |
 | Two LangGraph graphs | Full graph (with initialize) for create_interview(), next-question graph for get_next_question() |
 | Enrichment pre-fill at pop time | Not at initialization — allows enrichment to arrive after interview start |
 | Max 2 follow-ups per question | Prevents infinite loops while allowing meaningful deepening |
@@ -591,4 +576,3 @@ uv run pytest -m integration -v         # Integration test only (~2.5min, needs 
 | Monitoring | None | OpenTelemetry + LangSmith |
 | Rate limiting | None | Redis-based |
 | Report storage | Backend onboarding DB | Directus (via API or direct DB write) |
-| Avatar storage | Local filesystem | S3/R2 cloud storage |
