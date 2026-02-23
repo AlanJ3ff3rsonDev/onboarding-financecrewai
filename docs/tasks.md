@@ -939,7 +939,7 @@
 - Todos os testes passam
 - Teste manual: CLI mostra "Quer dar um nome ao seu agente?" como primeira pergunta
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -992,7 +992,7 @@
 - Validações de formato e tamanho funcionam
 - Todos os testes passam
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
@@ -2015,9 +2015,9 @@ Contexto: As telas já existem individualmente. Agora precisamos:
 | T26 | Refatorar perguntas core + follow-up | M5.5 | T25 | `done` |
 | T27 | Refatorar perguntas dinâmicas | M5.5 | T26 | `done` |
 | T28 | Atualizar prompt de geração | M5.5 | T27 | `done` |
-| T29 | core_3 texto aberto + core_10 pergunta aberta | M5.6 | T28 | `pending` |
+| T29 | core_3 texto aberto + core_10 pergunta aberta | M5.6 | T28 | `done` |
 | T30 | Pergunta de nome do agente | M5.7 | T29 | `done` |
-| T31 | Upload de foto do agente | M5.7 | T30 | `pending` |
+| T31 | Upload de foto do agente | M5.7 | T30 | `done` |
 | T32 | Geração de avatar com API Gemini | M5.7 | T31 | `pending` |
 | T33 | Pesquisa web sobre a empresa | M5.8 | T28 | `pending` |
 | T34 | Relatório SOP (substituir AgentConfig) | M5.9 | T30, T33 | `pending` |

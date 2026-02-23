@@ -30,5 +30,8 @@ Thumbs.db
 # uv
 .python-version
 
+# Uploads (avatars, etc.)
+uploads/
+
 # Claude Code
 .claude/

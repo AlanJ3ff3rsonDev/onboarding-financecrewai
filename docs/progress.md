@@ -68,6 +68,48 @@ Track bugs or problems that need attention but aren't blocking current work.
 
 ## Development Log
 
+### 2026-02-23 — T31 (M5.7): Upload de foto do agente
+
+**Status**: completed
+
+**What was done**:
+- **New endpoint**: `POST /api/v1/sessions/{id}/agent/avatar/upload` — accepts multipart file upload (PNG, JPG, JPEG, WebP), max 5MB
+- **Validations**: format (400 for unsupported), size (400 for >5MB), session existence (404)
+- **File storage**: saves to `app/uploads/avatars/{session_id}.{ext}`, creates directory if needed, removes previous avatar on overwrite
+- **ORM**: added `agent_avatar_path` (Text, nullable) column to `OnboardingSession`
+- **Schema**: added `agent_avatar_path` to `SessionResponse` so GET /sessions returns the path
+- **Static files**: mounted `/uploads` via FastAPI `StaticFiles` for serving uploaded images
+- **Gitignore**: added `uploads/` to `.gitignore`
+
+**Files modified** (5):
+- `app/routers/agent.py` — new upload_avatar endpoint with format/size validation
+- `app/models/orm.py` — added agent_avatar_path column
+- `app/models/schemas.py` — added agent_avatar_path to SessionResponse
+- `app/main.py` — mounted StaticFiles for /uploads
+- `.gitignore` — added uploads/
+
+**Files created** (1):
+- `tests/test_avatar.py` — 7 tests for avatar upload
+
+**Tests**:
+- [x] Automated: 7/7 avatar tests passing (PNG, JPG, WebP success, invalid format, too large, session not found, overwrite)
+- [x] Automated: Full suite 130/130 tests passing (122 existing + 1 integration + 7 new, no regressions)
+- [x] Manual: Full endpoint test via curl on uvicorn:
+  - POST PNG upload → 200, correct avatar_url returned
+  - POST invalid format (text/plain) → 400 "Formato não suportado"
+  - POST to nonexistent session → 404 "Session not found"
+  - POST JPG overwrites previous PNG → 200, new path, old file removed
+  - GET /sessions/{id} → agent_avatar_path shows latest upload
+  - GET /uploads/avatars/{id}.jpg → HTTP 200 (static file served)
+
+**Issues found**:
+- **DB schema mismatch**: Production DB (onboarding.db) didn't have the new column. Deleted and let `create_all` recreate it. Not an issue for tests (test DB is recreated each run via setup_db fixture).
+
+**Next steps**:
+- Git commit & push. Next task: T32 (Geração de avatar com API Gemini).
+
+---
+
 ### 2026-02-23 — T30 (M5.7): Pergunta de nome do agente (core_0)
 
 **Status**: completed
