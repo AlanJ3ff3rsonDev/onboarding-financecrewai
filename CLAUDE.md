@@ -79,3 +79,4 @@ These rules were learned from real bugs across 25 tasks. Follow them.
 - **Always patch external APIs in unit tests.** If `OPENAI_API_KEY` is in env, unpatched code paths will make real API calls and break tests.
 - **Validate real-world formats.** When building allowlists (file types, MIME types), check what real users produce (phone recorders, browsers), not just what the spec says.
 - **Integration test assertions must be structural** — status codes, required fields, valid enums. Never assert on specific LLM-generated content.
+- **Don't filter on a single field when objects share it.** Dynamically generated objects (follow-ups, dynamic questions) can inherit field values like `is_required=False` from their parent context. Always combine multiple fields (e.g., `is_required is False AND phase == "core"`) to target exactly what you mean.
