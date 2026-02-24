@@ -5,16 +5,17 @@
 CollectAI self-service onboarding: a client enters their website, answers structured questions (text or audio), and the system generates a complete, well-configured collection agent (JSON config).
 
 **Stack**: FastAPI + SQLite + OpenAI API + LangGraph + Playwright + uv
-**Status**: Backend MVP complete (M0-M5, 120 tests). Next: Deploy (M6), Frontend via Lovable (M7).
+**Status**: Backend MVP complete (M0-M5.8, 134 tests). Next: T34 (M5.9 SOP Report), then Deploy (M6), Frontend (M7).
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `docs/tech_design.md` | Source of truth — architecture, data model, endpoints, services |
-| `docs/tasks.md` | Task breakdown — find the next `pending` task here |
-| `docs/progress.md` | Development log — read this FIRST every session |
-| `docs/PRD.md` | Product requirements — what to build and why |
+| `docs/SUMMARY.md` | **Read FIRST** — project state, architecture summary, section index |
+| `docs/tasks.md` | Task details — only pending/active tasks with full definitions |
+| `docs/progress.md` | Development log — last 2-3 tasks only |
+| `docs/tech_design.md` | Source of truth — read specific sections via SUMMARY.md index |
+| `docs/PRD.md` | Product requirements — read specific sections via SUMMARY.md index |
 | `backend/` | All source code |
 
 ## Commands
@@ -33,17 +34,18 @@ lsof -ti :8000 | xargs kill -9 2>/dev/null                    # Free port before
 
 Every session, follow this exact order:
 
-1. **Read `docs/progress.md` FIRST** — even if you have a plan. Catches bugs, fixes, and context from prior sessions.
-2. **Read `docs/tasks.md`** — find the next `pending` task (follow milestone order)
-3. **Read the task** — understand objective, dependencies, Definition of Done
-4. **Check dependencies** — all prerequisite tasks must be `done`
-5. **Mark `in_progress`** in tasks.md
-6. **Implement** — follow `docs/tech_design.md` for architecture decisions
-7. **Run task tests** then **full suite** — catch regressions
-8. **Manual test** — run the feature end-to-end with realistic input, show output to user
-9. **Log result** in `docs/progress.md` — what was done, test results, issues
-10. **Mark `done`** in tasks.md (only if ALL DoD criteria pass)
-11. **Git commit & push**
+1. **Read `docs/SUMMARY.md` FIRST** — project state, what's next, architecture overview
+2. **Read the next pending task** in `docs/tasks.md` — only the specific task section
+3. **Read `docs/progress.md`** only if needed (recent bugs, context from last 2-3 tasks)
+4. **Read specific sections** of `tech_design.md` or `PRD.md` via the section index in SUMMARY.md — NEVER read these files fully unless the task requires broad changes
+5. **Check dependencies** — all prerequisite tasks must be `done`
+6. **Mark `in_progress`** in tasks.md
+7. **Implement** — follow `docs/tech_design.md` for architecture decisions
+8. **Run task tests** then **full suite** — catch regressions
+9. **Manual test** — run the feature end-to-end with realistic input, show output to user
+10. **Log result** in `docs/progress.md` — what was done, test results, issues
+11. **Mark `done`** in tasks.md (only if ALL DoD criteria pass)
+12. **Git commit & push**
 
 ## Rules
 

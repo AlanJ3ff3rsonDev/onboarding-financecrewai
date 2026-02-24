@@ -66,13 +66,13 @@ Build a **self-service onboarding system** where a client:
 | Component | Status | Details |
 |-----------|--------|---------|
 | **Enrichment** | Done | Website scraping (Playwright) + LLM extraction (GPT-4.1-mini) |
-| **Web Research** | Planned (T33) | Busca web sobre a empresa (Serper API) + consolidação LLM |
-| **Wizard/Interview** | Done (restructuring in T32) | 10 core questions (mostly select/multiselect) + AI follow-ups + dynamic questions (up to 3). T32 simplifies from 16→10. |
-| **Agent Identity** | Done (T30) | Nome do agente (core_0). Avatar removido do escopo — upload direto na plataforma. |
+| **Web Research** | Done (T33) | Serper API → 3 parallel queries → GPT consolidation → WebResearchResult |
+| **Wizard/Interview** | Done (T32) | 10 core questions (mostly select/multiselect) + AI follow-ups + dynamic questions (up to 3) |
+| **Agent Identity** | Done (T30) | Nome do agente (core_0). Avatar handled in platform (Directus). |
 | **Agent Generation** | Done (replacing with SOP in T34) | Currently: AgentConfig + system_prompt. T34 replaces with OnboardingReport SOP. |
 | **Simulation** | Done (adapting in T34) | 2 simulated conversations (cooperative + resistant). Will adapt to use SOP data. |
 | **Audio Transcription** | Done | GPT-4o-mini-transcribe, supports 11 audio formats, Portuguese |
-| **Integration Test** | Done | End-to-end test with real OpenAI API — 130 tests passing |
+| **Integration Test** | Done | End-to-end test with real OpenAI API — 134 tests passing |
 
 ### Deploy — NEXT (M6)
 
@@ -206,7 +206,7 @@ Build a **self-service onboarding system** where a client:
 
 #### Layer 2: AI-Driven Dynamic Questions (up to 3, context-dependent)
 
-After core questions, the AI generates targeted questions from 7 categories (business_model, debtor_profile, negotiation_depth, legal_judicial, segmentation, brand_language, payment_operations). Completeness evaluated after each: confidence >= 7/10 → stops. No follow-ups on dynamic questions.
+After core questions, the AI generates targeted questions from 4 categories (business_model, debtor_profile, negotiation_depth, brand_language). Completeness evaluated after each: confidence >= 7/10 → stops. No follow-ups on dynamic questions.
 
 #### Layer 3: Review (confirm answers + optional notes)
 
@@ -231,9 +231,9 @@ GPT-4o-mini-transcribe, supports 11 formats (webm, mp4, wav, mpeg, ogg, flac, m4
 
 Single LLM call generates 2 conversations (cooperative + resistant, 8-15 messages each). Will be adapted to use OnboardingReport data instead of AgentConfig.
 
-### FR-8: Web Research — PLANNED (T33)
+### FR-8: Web Research — IMPLEMENTED (T33)
 
-In addition to website scraping, the system searches the web about the company using a search API (Serper/Google). Results are consolidated by LLM into a `WebResearchResult` with: company description, products/services, sector context, reputation summary, collection-relevant insights. Data feeds into enrichment pre-fills and the final SOP report.
+Serper API → 3 parallel queries (empresa geral, produtos/clientes, setor+cobrança) → deduplicate by URL → GPT-4.1-mini consolidation → WebResearchResult (company description, products/services, sector context, reputation summary, collection-relevant insights). Data feeds into enrichment pre-fills and the final SOP report. Graceful skip if no SEARCH_API_KEY.
 
 ### FR-9: Agent Personalization — IMPLEMENTED (T30)
 

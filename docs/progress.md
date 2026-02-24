@@ -5,7 +5,7 @@
 Log every task here. Entry format: date, task ID, status, what was done, tests, issues, next steps.
 Full workflow: mark in_progress → implement → test task → test full suite → log here → mark done → git commit & push.
 
-> **Archive**: Entries for T01-T28 are in `docs/progress_archive.md`.
+> **Archive**: Entries for T01-T31 are in `docs/progress_archive.md`.
 
 ---
 
@@ -104,48 +104,3 @@ Part C — Update Tests:
 **Removed from scope**: avatar upload (T31), avatar generation (old T32), Gemini API
 **Moved to planilha**: juros, multa, parcelamento, desconto %, payment verification, regulations
 
----
-
-### 2026-02-23 — T31 (M5.7): Upload de foto do agente
-
-**Status**: completed
-
-**What was done**:
-- `POST /api/v1/sessions/{id}/agent/avatar/upload` — multipart file upload (PNG/JPG/WebP, max 5MB)
-- Validations: format (400), size (400), session existence (404)
-- File storage: `app/uploads/avatars/{session_id}.{ext}`, removes previous on overwrite
-- ORM: added `agent_avatar_path` column. Schema: added to `SessionResponse`
-- Static files: mounted `/uploads` via StaticFiles
-
-**Tests**: 130/130 passing (122 existing + 1 integration + 7 new avatar tests)
-**Issues**: DB schema mismatch on production DB (recreated). Not an issue for tests.
-
----
-
-### 2026-02-23 — T30 (M5.7): Pergunta de nome do agente (core_0)
-
-**Status**: completed
-
-**What was done**:
-- core_0 added as first interview question (optional text)
-- Total core questions: 15 → 16
-- `is_optional_question` check in submit_answer() — optional core questions skip follow-up
-- build_prompt() conditionally includes "Identidade do Agente" section
-
-**Tests**: 122/122 passing (2 new: test_core_0_is_first_question, test_core_0_optional_skips_follow_up)
-**Issues**: Bug: follow-up questions also skipped by optional check (both have is_required=False). Fix: narrowed to `is_required=False AND phase=="core"`.
-
----
-
-### 2026-02-22 — T29 (M5.6): core_3 texto aberto + core_10_open
-
-**Status**: completed
-
-**What was done**:
-- core_3 converted from select to text (captures tiered overdue rules)
-- core_10_open added: optional text for business-specific escalation triggers
-- Total core questions: 14 → 15
-- Integration test: added missing core_13/core_14/core_10_open answers, rewrote loop
-
-**Tests**: 120/120 passing (2 new: test_core_3_is_text_question, test_core_10_open_exists)
-**Issues**: Integration test was missing core_13/core_14 answers from M5.5 refactor. Fixed.

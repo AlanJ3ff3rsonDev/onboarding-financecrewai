@@ -1,6 +1,6 @@
-# Tasks Archive (M0-M5.6) — Completed
+# Tasks Archive (M0-M5.8) — Completed
 
-Archived from `tasks.md` on 2026-02-23. Full task definitions for all completed milestones.
+Archived from `tasks.md`. Full task definitions for all completed milestones.
 For active/pending tasks, see `tasks.md`.
 
 ---
@@ -149,4 +149,28 @@ Status: `done`
 
 ### T29: core_3 texto aberto + core_10_open
 core_3 select->text, core_10_open optional escalation question added. 14->15 core questions.
+Status: `done`
+
+---
+
+## M5.7: Personalizacao do Agente + Reestruturacao Perguntas (T30-T32) — DONE
+
+### T30: Pergunta de nome do agente (core_0)
+core_0 as first optional question. is_optional_question check skips follow-up. build_prompt() conditional identity section.
+Status: `done`
+
+### T31: Upload de foto do agente
+Out of scope — avatar moved to platform (Directus).
+Status: `out_of_scope`
+
+### T32: Remover avatar + reestruturar perguntas core (16→10)
+Removed avatar (endpoints, ORM, schema, tests, uploads dir). Redesigned core questions from 16 to 10 (2 text optional, 2 text required, 3 select, 3 multiselect). Updated ENRICHMENT_PREFILL_MAP (core_1, core_3, core_4). Updated DYNAMIC_QUESTION_BANK (7→4 categories). Rewrote build_prompt() (9→7 sections). Financial details (juros, multa, parcelamento) moved to separate spreadsheet.
+Status: `done`
+
+---
+
+## M5.8: Enriquecimento Avancado — Pesquisa Web (T33) — DONE
+
+### T33: Pesquisa web sobre a empresa no enrichment
+Serper API → 3 parallel queries (empresa geral, produtos/clientes, setor+cobrança) → deduplicate by URL → GPT-4.1-mini consolidation → WebResearchResult stored as `enrichment_data["web_research"]`. New files: services/web_research.py, prompts/web_research.py, tests/test_web_research.py. Graceful skip if no SEARCH_API_KEY.
 Status: `done`

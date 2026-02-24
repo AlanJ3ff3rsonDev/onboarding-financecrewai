@@ -83,12 +83,12 @@ backend/
     ├── test_audio.py              # 11 tests
     ├── test_agent_config.py       # 3 tests
     ├── test_agent_generator.py    # 17 tests
-    ├── test_avatar.py             # 7 tests (to be removed in T32)
+    ├── test_web_research.py       # 12 tests
     ├── test_simulation.py         # 12 tests
     └── test_integration.py        # 1 test (real OpenAI API, @pytest.mark.integration)
 ```
 
-**Total: 130 tests passing** (122 unit + 1 integration + 7 avatar — avatar tests removed in T32)
+**Total: 134 tests passing**
 
 ---
 
@@ -341,7 +341,7 @@ This replaces the old AgentConfig. Key difference: `expert_recommendations` is a
 }
 ```
 
-### WebResearchResult (planned — T33)
+### WebResearchResult
 
 ```json
 {
@@ -390,14 +390,14 @@ initialize → 10 core questions (with up to 2 follow-ups each, no follow-ups on
 
 **Frustration detection**: Hardcoded signals (13 Portuguese phrases) skip follow-up without LLM call.
 
-### 6.3 Web Research Service (planned — T33)
+### 6.3 Web Research Service
 
 ```
 company_name + website
-  → Search API (Serper) — 2-3 queries about the company
-  → Collect top snippets
-  → LLM consolidation → WebResearchResult
-  → Combined with CompanyProfile in enrichment_data
+  → Serper API — 3 parallel queries (empresa, produtos/clientes, setor+cobrança)
+  → Deduplicate by URL → LLM consolidation → WebResearchResult
+  → Stored as enrichment_data["web_research"]
+  → Graceful skip if no SEARCH_API_KEY
 ```
 
 ### 6.4 Report Generator (planned — T34, replaces Agent Generator)

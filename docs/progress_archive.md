@@ -1,7 +1,48 @@
-# Progress Archive (T01-T28)
+# Progress Archive (T01-T31)
 
-Archived from `progress.md` on 2026-02-23. These entries document completed work from M0-M5.5.
+Archived from `progress.md`. These entries document completed work from M0-M5.7.
 For current progress, see `progress.md`.
+
+---
+
+### 2026-02-23 — T31 (M5.7): Upload de foto do agente
+
+**Status**: completed (later removed in T32)
+
+**What was done**:
+- `POST /api/v1/sessions/{id}/agent/avatar/upload` — multipart file upload (PNG/JPG/WebP, max 5MB)
+- ORM: added `agent_avatar_path` column. Schema: added to `SessionResponse`
+- Static files: mounted `/uploads` via StaticFiles
+
+**Tests**: 130/130 passing
+**Issues**: Entire feature removed in T32 (avatar moved to platform scope).
+
+---
+
+### 2026-02-23 — T30 (M5.7): Pergunta de nome do agente (core_0)
+
+**Status**: completed
+
+**What was done**:
+- core_0 added as first interview question (optional text)
+- `is_optional_question` check in submit_answer() — optional core questions skip follow-up
+- build_prompt() conditionally includes "Identidade do Agente" section
+
+**Tests**: 122/122 passing
+**Issues**: Bug: follow-up questions also skipped by optional check. Fix: narrowed to `is_required=False AND phase=="core"`.
+
+---
+
+### 2026-02-22 — T29 (M5.6): core_3 texto aberto + core_10_open
+
+**Status**: completed
+
+**What was done**:
+- core_3 converted from select to text (captures tiered overdue rules)
+- core_10_open added: optional text for business-specific escalation triggers
+
+**Tests**: 120/120 passing
+**Issues**: Integration test was missing core_13/core_14 answers from M5.5 refactor. Fixed.
 
 ---
 
