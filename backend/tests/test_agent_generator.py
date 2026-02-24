@@ -37,74 +37,68 @@ def _sample_interview_responses() -> list[dict]:
         },
         {
             "question_id": "core_1",
-            "question_text": "O que sua empresa vende ou oferece?",
-            "answer": "Software de cobrança automatizada via WhatsApp",
+            "question_text": "Como funciona o processo de cobrança na sua empresa hoje?",
+            "answer": "Mandamos WhatsApp no D+5, ligamos no D+15, cobrança judicial no D+60",
             "source": "text",
         },
         {
-            "question_id": "core_2",
-            "question_text": "Seus clientes são pessoa física, jurídica ou ambos?",
-            "answer": "ambos",
-            "source": "text",
-        },
-        {
-            "question_id": "core_3",
-            "question_text": "Como seus clientes normalmente pagam?",
-            "answer": "pix,boleto,cartao",
-            "source": "text",
-        },
-        {
-            "question_id": "core_4",
-            "question_text": "Qual tom o agente deve usar nas conversas?",
-            "answer": "amigavel_firme",
-            "source": "text",
-        },
-        {
-            "question_id": "followup_core_5_1",
+            "question_id": "followup_core_1_1",
             "question_text": "Quantas pessoas trabalham na sua operação de cobrança?",
             "answer": "10 pessoas na operação",
             "source": "text",
         },
         {
-            "question_id": "core_5",
-            "question_text": "Como funciona o processo de cobrança hoje?",
-            "answer": "Mandamos WhatsApp no D+5, ligamos no D+15, cobrança judicial no D+60",
-            "source": "text",
-        },
-        {
-            "question_id": "core_6",
-            "question_text": "O agente pode oferecer desconto ou condição especial?",
+            "question_id": "core_2",
+            "question_text": "Vocês cobram juros por atraso?",
             "answer": "sim",
             "source": "text",
         },
         {
-            "question_id": "core_7",
-            "question_text": "Quando o agente deve passar a cobrança para um humano?",
-            "answer": "solicita_humano,divida_alta,agressivo",
+            "question_id": "followup_core_2_1",
+            "question_text": "Como funciona a cobrança de juros?",
+            "answer": "1% ao mês sobre o valor total",
             "source": "text",
         },
         {
-            "question_id": "core_8",
-            "question_text": "O que o agente NUNCA deve fazer ou dizer?",
-            "answer": "ameacar,prometer_falso,linguagem_agressiva",
+            "question_id": "core_3",
+            "question_text": "Vocês oferecem desconto para pagamento?",
+            "answer": "sim",
             "source": "text",
         },
         {
-            "question_id": "core_9",
-            "question_text": "Tem algo específico do seu negócio que o agente precisa saber?",
-            "answer": "Clientes dizem que o serviço não foi prestado conforme contratado. Regulamentação do CDC aplica.",
+            "question_id": "followup_core_3_1",
+            "question_text": "Como funciona o desconto?",
+            "answer": "Até 10% para pagamento à vista",
             "source": "text",
         },
         {
-            "question_id": "dynamic_1",
-            "question_text": "Qual o ticket médio das dívidas cobradas?",
-            "answer": "Entre R$500 e R$5.000",
+            "question_id": "core_4",
+            "question_text": "Vocês permitem parcelamento da dívida?",
+            "answer": "sim",
             "source": "text",
         },
         {
-            "question_id": "followup_dynamic_1_1",
-            "question_text": "Há diferença de abordagem por faixa de valor?",
-            "answer": "Sim, acima de R$2.000 oferecemos mais parcelas",
+            "question_id": "followup_core_4_1",
+            "question_text": "Como funciona o parcelamento?",
+            "answer": "Até 12x, parcela mínima de R$50",
+            "source": "text",
+        },
+        {
+            "question_id": "core_5",
+            "question_text": "Vocês cobram multa por atraso?",
+            "answer": "sim",
+            "source": "text",
+        },
+        {
+            "question_id": "followup_core_5_1",
+            "question_text": "Como funciona a multa?",
+            "answer": "2% sobre o valor da parcela vencida",
+            "source": "text",
+        },
+        {
+            "question_id": "core_6",
+            "question_text": "Tem alguma situação específica em que o agente deve passar a conversa para um atendente humano?",
+            "answer": "Quando o cliente e uma empresa parceira estrategica, devemos escalar para o gerente comercial.",
             "source": "text",
         },
     ]
@@ -145,22 +139,21 @@ def test_prompt_includes_all_sections():
     assert "Guardrails" in prompt
 
     # Key interview answers present
-    assert "Software de cobrança automatizada" in prompt  # core_1
-    assert "amigavel_firme" in prompt  # core_4 (tone)
-    assert "ameacar" in prompt  # core_8 (never-do)
-    assert "solicita_humano" in prompt  # core_7 (escalation)
-    assert "serviço não foi prestado" in prompt  # core_9 (business-specific)
+    assert "WhatsApp no D+5" in prompt  # core_1 (collection process)
+    assert "Juros por atraso" in prompt  # core_2 policy
+    assert "Desconto para pagamento" in prompt  # core_3 policy
+    assert "Parcelamento" in prompt  # core_4 policy
+    assert "Multa por atraso" in prompt  # core_5 policy
 
-    # Contexto Adicional do Negócio (core_9 answered)
-    assert "Contexto Adicional do Negócio" in prompt
+    # Default guardrails present
+    assert "Nunca ameaçar" in prompt
+    assert "Devedor agressivo" in prompt  # default escalation trigger
+
+    # Client-specified escalation (core_6)
+    assert "empresa parceira estrategica" in prompt
 
     # Follow-up answers included
-    assert "10 pessoas na operação" in prompt  # followup_core_5_1
-
-    # Dynamic questions included
-    assert "ticket médio" in prompt  # dynamic_1
-    assert "R$500" in prompt  # dynamic_1 answer
-    assert "Aprofundamento" in prompt  # follow-up on dynamic_1
+    assert "10 pessoas na operação" in prompt  # followup_core_1_1
 
     # Mapping hints present
     assert "Dicas de Mapeamento" in prompt

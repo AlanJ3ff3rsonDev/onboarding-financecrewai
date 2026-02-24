@@ -15,7 +15,6 @@ from app.prompts.interview import CORE_QUESTIONS
 from app.services.interview_agent import (
     create_interview,
     deserialize_state,
-    generate_dynamic_question,
     serialize_state,
     submit_answer,
 )
@@ -49,18 +48,6 @@ async def get_next_question(
         return {"phase": "review", "message": "Fase de perguntas concluída. Revise as respostas e confirme."}
 
     current = state.get("current_question")
-
-    # Dynamic phase with no current question: generate one
-    if current is None and state["phase"] == "dynamic":
-        question, new_state = await generate_dynamic_question(state)
-        if question is not None:
-            session.interview_state = serialize_state(new_state)
-            db.commit()
-            return question.model_dump()
-        # Generation failed or max reached — transitioned to review
-        session.interview_state = serialize_state(new_state)
-        db.commit()
-        return {"phase": new_state["phase"], "message": "Fase de perguntas concluída. Revise as respostas e confirme."}
 
     if current is None:
         return {"phase": state["phase"], "message": "Nenhuma pergunta disponível"}
@@ -139,7 +126,6 @@ async def get_interview_progress(
             total_answered=0,
             core_answered=0,
             core_total=len(CORE_QUESTIONS),
-            dynamic_answered=0,
             estimated_remaining=len(CORE_QUESTIONS),
             is_complete=False,
         )
@@ -153,13 +139,10 @@ async def get_interview_progress(
     current = state.get("current_question")
     if phase == "core" and current and current.get("question_id", "").startswith("core_"):
         core_answered -= 1
-    dynamic_answered = state["dynamic_questions_asked"]
     total_answered = len(state["answers"])
 
     if phase == "core":
-        estimated_remaining = (core_total - core_answered) + state["max_dynamic_questions"]
-    elif phase == "dynamic":
-        estimated_remaining = state["max_dynamic_questions"] - dynamic_answered
+        estimated_remaining = core_total - core_answered
     else:
         estimated_remaining = 0
 
@@ -174,7 +157,6 @@ async def get_interview_progress(
         total_answered=total_answered,
         core_answered=core_answered,
         core_total=core_total,
-        dynamic_answered=dynamic_answered,
         estimated_remaining=estimated_remaining,
         is_complete=is_complete,
     )

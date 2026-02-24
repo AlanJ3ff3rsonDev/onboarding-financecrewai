@@ -4,17 +4,17 @@
 
 ## Current State
 
-- **Completed**: M0-M5.8 (T01-T33) — 134 tests passing
-- **Next task**: T34 (M5.9) — Substituir AgentConfig por Relatório SOP estruturado
-- **After that**: T35-T37 (M6 Deploy), T38-T44 (M7 Frontend), T45 (M8 Directus)
+- **Completed**: M0-M5.9 (T01-T34) — 123 tests passing
+- **Next task**: T35 (M6) — CORS configuration
+- **After that**: T36-T37 (M6 Deploy), T38-T44 (M7 Frontend), T45 (M8 Directus)
 
 ## Architecture (10-line summary)
 
 - **Stack**: FastAPI + SQLite + OpenAI GPT-4.1-mini + LangGraph + Playwright + uv
-- **Flow**: Create session → Enrich (scrape + web research) → Interview (10 core + follow-ups + 3 dynamic + review) → Generate report → Simulate 2 conversations
-- **Interview**: 10 core questions (2 text optional, 2 text required, 3 select, 3 multiselect), enrichment pre-fills core_1/core_3/core_4
-- **Dynamic**: max 3 questions from 4 categories, no follow-ups, confidence >= 7 stops
-- **Output**: OnboardingReport SOP (T34, replaces AgentConfig) — structured JSON for downstream consumption
+- **Flow**: Create session → Enrich (scrape + web research) → Interview (7 core + follow-ups + review) → Generate agent config → Simulate 2 conversations
+- **Interview**: 7 core questions (1 text process + 4 select sim/não policies + 2 text optional). No dynamic questions, no enrichment pre-fill.
+- **Follow-ups**: core_1 (process) → LLM-evaluated max 1; core_2-5 (policies) → deterministic on "sim"; core_0/core_6 → none
+- **Defaults**: Escalation triggers, guardrails, and tone are hardcoded defaults (previously collected via core_7/core_8/core_4)
 - **Web research**: Serper API → 3 parallel queries → deduplicate → GPT consolidation → `enrichment_data["web_research"]`
 - **Audio**: GPT-4o-mini-transcribe, 11 formats, Portuguese
 - **DB**: Single table `onboarding_sessions` with JSON columns for state
@@ -43,15 +43,12 @@
 
 ## Core Questions (quick reference)
 
-| ID | Topic | Type |
-|----|-------|------|
-| core_0 | Agent name | text (optional) |
-| core_1 | Products/services | text (pre-filled) |
-| core_2 | PF/PJ/ambos | select |
-| core_3 | Payment methods | multiselect (pre-filled) |
-| core_4 | Tone | select (pre-filled) |
-| core_5 | Collection process | text |
-| core_6 | Discount policy | select |
-| core_7 | Escalation triggers | multiselect |
-| core_8 | Never-do list | multiselect |
-| core_9 | Business-specific info | text (optional) |
+| ID | Topic | Type | Follow-up |
+|----|-------|------|-----------|
+| core_0 | Agent name | text (optional) | None |
+| core_1 | Collection process | text | LLM-evaluated (max 1) |
+| core_2 | Juros por atraso | select sim/não | Deterministic on "sim" |
+| core_3 | Desconto pagamento | select sim/não | Deterministic on "sim" |
+| core_4 | Parcelamento | select sim/não | Deterministic on "sim" |
+| core_5 | Multa por atraso | select sim/não | Deterministic on "sim" |
+| core_6 | Escalação humano | text (optional) | None |

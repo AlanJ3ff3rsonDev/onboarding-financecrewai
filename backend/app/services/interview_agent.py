@@ -11,23 +11,13 @@ from app.config import settings
 from app.models.schemas import InterviewQuestion
 from app.prompts.interview import (
     CORE_QUESTIONS,
-    DYNAMIC_QUESTION_BANK,
-    DYNAMIC_QUESTION_PROMPT,
     FOLLOW_UP_EVALUATION_PROMPT,
-    INTERVIEW_COMPLETENESS_PROMPT,
+    POLICY_FOLLOWUP_MAP,
 )
 
 logger = logging.getLogger(__name__)
 
-MAX_FOLLOW_UPS_PER_QUESTION = 2
-
-# ---------- Pre-fill mapping: question_id -> (enrichment_field, context_hint_template) ----------
-
-ENRICHMENT_PREFILL_MAP: dict[str, tuple[str, str]] = {
-    "core_1": ("products_description", "Baseado no seu site: {value}"),
-    "core_3": ("payment_methods_mentioned", "Encontrado no site: {value}"),
-    "core_4": ("communication_tone", "Tom detectado no site: {value}"),
-}
+MAX_FOLLOW_UPS_PER_QUESTION = 1
 
 
 # ---------- State ----------
@@ -38,32 +28,10 @@ class InterviewState(TypedDict):
     core_questions_remaining: list[dict]
     current_question: dict | None
     answers: list[dict]
-    dynamic_questions_asked: int
-    max_dynamic_questions: int
-    phase: str  # "core" | "dynamic" | "review" | "complete"
+    phase: str  # "core" | "review" | "complete"
     needs_follow_up: bool
     follow_up_question: dict | None
     follow_up_count: int
-
-
-# ---------- Pre-fill helper ----------
-
-
-def _apply_enrichment_prefill(question: dict, enrichment_data: dict) -> dict:
-    """Apply enrichment-based pre-fill to a question dict if applicable."""
-    qid = question.get("question_id", "")
-    mapping = ENRICHMENT_PREFILL_MAP.get(qid)
-    if not mapping:
-        return question
-
-    field, hint_template = mapping
-    value = enrichment_data.get(field, "")
-    if value and isinstance(value, str) and value.strip():
-        question = {**question}  # shallow copy to avoid mutating original
-        question["pre_filled_value"] = value.strip()
-        question["context_hint"] = hint_template.format(value=value.strip())
-
-    return question
 
 
 # ---------- Graph node functions ----------
@@ -75,8 +43,6 @@ def initialize(state: InterviewState) -> dict:
         "core_questions_remaining": [q.model_dump() for q in CORE_QUESTIONS],
         "current_question": None,
         "answers": [],
-        "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -85,19 +51,18 @@ def initialize(state: InterviewState) -> dict:
 
 
 def select_next_core_question(state: InterviewState) -> dict:
-    """Pop the next core question from remaining and apply enrichment pre-fill."""
+    """Pop the next core question from remaining."""
     remaining = list(state["core_questions_remaining"])
 
     if not remaining:
-        logger.info("All core questions answered, transitioning to dynamic phase")
+        logger.info("All core questions answered, transitioning to review phase")
         return {
             "core_questions_remaining": [],
             "current_question": None,
-            "phase": "dynamic",
+            "phase": "review",
         }
 
     next_q = remaining.pop(0)
-    next_q = _apply_enrichment_prefill(next_q, state.get("enrichment_data", {}))
 
     return {
         "core_questions_remaining": remaining,
@@ -171,8 +136,6 @@ def deserialize_state(data: dict) -> InterviewState:
         core_questions_remaining=data.get("core_questions_remaining", []),
         current_question=data.get("current_question"),
         answers=data.get("answers", []),
-        dynamic_questions_asked=data.get("dynamic_questions_asked", 0),
-        max_dynamic_questions=data.get("max_dynamic_questions", 3),
         phase=data.get("phase", "core"),
         needs_follow_up=data.get("needs_follow_up", False),
         follow_up_question=data.get("follow_up_question"),
@@ -228,16 +191,6 @@ def _build_enrichment_context(enrichment_data: dict) -> str:
                 lines.append(f"- {label}: {value.strip()}")
 
     return "\n".join(lines) if lines else "Nenhum dado de enriquecimento disponível."
-
-
-def _build_question_bank_context() -> str:
-    """Format the dynamic question bank as text for LLM context."""
-    lines = []
-    for category, questions in DYNAMIC_QUESTION_BANK.items():
-        lines.append(f"### {category}")
-        for q in questions:
-            lines.append(f"  - {q}")
-    return "\n".join(lines)
 
 
 def _get_parent_question_id(question_id: str) -> str:
@@ -342,150 +295,29 @@ async def evaluate_and_maybe_follow_up(
     return True, follow_up_question
 
 
-# ---------- Dynamic question generation ----------
+# ---------- Deterministic policy follow-ups ----------
 
 
-async def generate_dynamic_question(
-    state: InterviewState,
-) -> tuple[InterviewQuestion | None, InterviewState]:
-    """Generate the next dynamic question using LLM.
+def _build_policy_followup(question_id: str) -> dict | None:
+    """Build a deterministic follow-up question for policy questions (core_2-5) answered 'sim'.
 
-    Returns:
-        Tuple of (generated InterviewQuestion or None on failure, updated state).
-        On failure, transitions to "defaults" phase (graceful degradation).
+    Returns the follow-up question dict, or None if question_id is not in the map.
     """
-    dynamic_count = state.get("dynamic_questions_asked", 0)
-    max_dynamic = state.get("max_dynamic_questions", 8)
+    followup_text = POLICY_FOLLOWUP_MAP.get(question_id)
+    if not followup_text:
+        return None
 
-    if dynamic_count >= max_dynamic:
-        logger.info("Max dynamic questions reached (%d), transitioning to review", dynamic_count)
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return None, new_state
-
-    if not settings.OPENAI_API_KEY:
-        logger.warning("No OPENAI_API_KEY, skipping dynamic questions")
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return None, new_state
-
-    prompt = DYNAMIC_QUESTION_PROMPT.format(
-        enrichment_context=_build_enrichment_context(state.get("enrichment_data", {})),
-        answers_context=_build_answers_context(state.get("answers", [])),
-        question_bank=_build_question_bank_context(),
-    )
-
-    try:
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        response = await client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.5,
-        )
-        data = json.loads(response.choices[0].message.content)
-    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
-        logger.warning("Dynamic question generation failed: %s", exc)
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return None, new_state
-
-    question_text = data.get("question_text")
-    if not question_text:
-        logger.warning("LLM returned empty question_text, transitioning to review")
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return None, new_state
-
-    new_count = dynamic_count + 1
-    question_dict = {
-        "question_id": f"dynamic_{new_count}",
-        "question_text": question_text,
+    return {
+        "question_id": f"followup_{question_id}_1",
+        "question_text": followup_text,
         "question_type": "text",
         "options": None,
         "pre_filled_value": None,
         "is_required": True,
         "supports_audio": True,
-        "phase": "dynamic",
+        "phase": "follow_up",
         "context_hint": None,
     }
-
-    new_state = InterviewState(
-        **{**dict(state),
-           "current_question": question_dict,
-           "dynamic_questions_asked": new_count,
-           "phase": "dynamic",
-           "follow_up_count": 0,
-           "needs_follow_up": False,
-           "follow_up_question": None,
-           }
-    )
-    question = InterviewQuestion.model_validate(question_dict)
-    return question, new_state
-
-
-async def evaluate_interview_completeness(
-    state: InterviewState,
-) -> tuple[bool, InterviewState]:
-    """Evaluate if the interview has enough data to generate a good agent.
-
-    Returns:
-        Tuple of (is_complete, updated_state).
-        is_complete=True means confidence >= 7 or max dynamic questions reached.
-    """
-    dynamic_count = state.get("dynamic_questions_asked", 0)
-    max_dynamic = state.get("max_dynamic_questions", 8)
-
-    if dynamic_count >= max_dynamic:
-        logger.info("Max dynamic questions reached (%d), interview complete", dynamic_count)
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return True, new_state
-
-    if not settings.OPENAI_API_KEY:
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return True, new_state
-
-    prompt = INTERVIEW_COMPLETENESS_PROMPT.format(
-        enrichment_context=_build_enrichment_context(state.get("enrichment_data", {})),
-        answers_context=_build_answers_context(state.get("answers", [])),
-        dynamic_count=dynamic_count,
-        max_dynamic=max_dynamic,
-    )
-
-    try:
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        response = await client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.2,
-        )
-        data = json.loads(response.choices[0].message.content)
-    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
-        logger.warning("Completeness evaluation failed: %s", exc)
-        return False, state
-
-    confidence = data.get("confidence", 0)
-    logger.info(
-        "Interview completeness confidence: %d/10 (reason: %s)",
-        confidence, data.get("reason", ""),
-    )
-
-    if confidence >= 7:
-        new_state = InterviewState(
-            **{**dict(state), "phase": "review", "current_question": None}
-        )
-        return True, new_state
-
-    return False, state
 
 
 # ---------- Public API ----------
@@ -498,16 +330,14 @@ async def create_interview(enrichment_data: dict | None = None) -> InterviewStat
         enrichment_data: CompanyProfile dict from enrichment, or None.
 
     Returns:
-        InterviewState with phase="core", current_question set to core_1,
-        and 11 remaining core questions.
+        InterviewState with phase="core", current_question set to core_0,
+        and 6 remaining core questions.
     """
     initial_state: InterviewState = {
         "enrichment_data": enrichment_data or {},
         "core_questions_remaining": [],
         "current_question": None,
         "answers": [],
-        "dynamic_questions_asked": 0,
-        "max_dynamic_questions": 3,
         "phase": "core",
         "needs_follow_up": False,
         "follow_up_question": None,
@@ -561,44 +391,82 @@ async def submit_answer(
         core_questions_remaining=state["core_questions_remaining"],
         current_question=state["current_question"],
         answers=answers,
-        dynamic_questions_asked=state["dynamic_questions_asked"],
-        max_dynamic_questions=state["max_dynamic_questions"],
         phase=state["phase"],
         needs_follow_up=state["needs_follow_up"],
         follow_up_question=state["follow_up_question"],
         follow_up_count=state.get("follow_up_count", 0),
     )
 
-    # Follow-up evaluation for text answers, or select/multiselect with "outro"/"depende"
-    # Skip follow-ups entirely for dynamic phase questions and optional questions
-    question_type = current.get("question_type", "text")
-    answer_lower = answer.lower()
-    is_dynamic_phase = updated_state.get("phase") == "dynamic"
+    # Determine follow-up logic based on question type
     is_optional_question = current.get("is_required") is False and current.get("phase") == "core"
-    needs_evaluation = (
-        not is_dynamic_phase
-        and not is_optional_question
-        and (
-            question_type == "text"
-            or "outro" in answer_lower
-            or "depende" in answer_lower
-        )
+    is_policy_question = question_id in POLICY_FOLLOWUP_MAP
+    is_policy_followup = question_id.startswith("followup_") and any(
+        question_id.startswith(f"followup_{pid}_") for pid in POLICY_FOLLOWUP_MAP
     )
-    if needs_evaluation:
-        needs_fu, fu_question = await evaluate_and_maybe_follow_up(
-            updated_state, question_id, answer,
+
+    # Policy questions (core_2-5): deterministic follow-up
+    if is_policy_question:
+        answer_lower = answer.strip().lower()
+        if answer_lower == "sim":
+            fu_question = _build_policy_followup(question_id)
+            if fu_question:
+                updated_state = InterviewState(
+                    **{**dict(updated_state),
+                       "current_question": fu_question,
+                       "follow_up_count": 1,
+                       "needs_follow_up": True,
+                       "follow_up_question": fu_question,
+                       }
+                )
+                question = InterviewQuestion.model_validate(fu_question)
+                return question, updated_state
+        # "nao" or anything else → no follow-up, advance
+        updated_state = InterviewState(
+            **{**dict(updated_state),
+               "follow_up_count": 0,
+               "needs_follow_up": False,
+               "follow_up_question": None,
+               }
         )
-        if needs_fu and fu_question:
-            updated_state = InterviewState(
-                **{**dict(updated_state),
-                   "current_question": fu_question,
-                   "follow_up_count": updated_state.get("follow_up_count", 0) + 1,
-                   "needs_follow_up": True,
-                   "follow_up_question": fu_question,
-                   }
-            )
-            question = InterviewQuestion.model_validate(fu_question)
-            return question, updated_state
+        return await get_next_question(updated_state)
+
+    # Policy follow-up answers (e.g. followup_core_2_1) → no further follow-up, advance
+    if is_policy_followup:
+        updated_state = InterviewState(
+            **{**dict(updated_state),
+               "follow_up_count": 0,
+               "needs_follow_up": False,
+               "follow_up_question": None,
+               }
+        )
+        return await get_next_question(updated_state)
+
+    # Optional questions (core_0, core_6) → no follow-up
+    if is_optional_question:
+        updated_state = InterviewState(
+            **{**dict(updated_state),
+               "follow_up_count": 0,
+               "needs_follow_up": False,
+               "follow_up_question": None,
+               }
+        )
+        return await get_next_question(updated_state)
+
+    # Text questions (core_1) → LLM-evaluated follow-up (max 1)
+    needs_fu, fu_question = await evaluate_and_maybe_follow_up(
+        updated_state, question_id, answer,
+    )
+    if needs_fu and fu_question:
+        updated_state = InterviewState(
+            **{**dict(updated_state),
+               "current_question": fu_question,
+               "follow_up_count": updated_state.get("follow_up_count", 0) + 1,
+               "needs_follow_up": True,
+               "follow_up_question": fu_question,
+               }
+        )
+        question = InterviewQuestion.model_validate(fu_question)
+        return question, updated_state
 
     # No follow-up needed — reset count and advance to next question
     updated_state = InterviewState(
@@ -609,20 +477,13 @@ async def submit_answer(
            }
     )
 
-    # Dynamic phase: evaluate completeness before generating next question
-    if updated_state.get("phase") == "dynamic":
-        is_complete, eval_state = await evaluate_interview_completeness(updated_state)
-        if is_complete:
-            return None, eval_state
-        return await generate_dynamic_question(eval_state)
-
     return await get_next_question(updated_state)
 
 
 async def get_next_question(
     state: InterviewState,
 ) -> tuple[InterviewQuestion | None, InterviewState]:
-    """Advance the interview to the next question (core or dynamic).
+    """Advance the interview to the next question.
 
     Args:
         state: Current InterviewState (loaded from DB).
@@ -630,10 +491,6 @@ async def get_next_question(
     Returns:
         Tuple of (next InterviewQuestion or None, updated InterviewState).
     """
-    # Already in dynamic phase — generate a dynamic question directly
-    if state.get("phase") == "dynamic":
-        return await generate_dynamic_question(state)
-
     # Core phase: use the LangGraph to select next core question
     graph = _build_next_question_graph().compile()
     result = graph.invoke(dict(state))
@@ -643,9 +500,5 @@ async def get_next_question(
     if current is not None:
         question = InterviewQuestion.model_validate(current)
         return question, new_state
-
-    # Core questions exhausted — phase just changed to "dynamic"
-    if new_state.get("phase") == "dynamic":
-        return await generate_dynamic_question(new_state)
 
     return None, new_state

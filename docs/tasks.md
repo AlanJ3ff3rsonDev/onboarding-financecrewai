@@ -23,7 +23,7 @@
 | **M5.6** | Refinamento de Perguntas | T29 | DONE |
 | **M5.7** | Personalizacao do Agente + Reestruturacao Perguntas | T30-T32 | DONE |
 | **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | DONE |
-| **M5.9** | Relatorio SOP (substituir AgentConfig) | T34 | Pending |
+| **M5.9** | Simplificar Entrevista (10→7, remover dinâmicas) | T34 | DONE |
 | **M6** | Deploy | T35-T37 | Pending |
 | **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
 | **M8** | Integracao Directus | T45 | Future |
@@ -67,20 +67,11 @@
 | T31 | ~~Upload de foto do agente~~ | M5.7 | `out_of_scope` |
 | T32 | Remover avatar + reestruturar perguntas core (16→10) | M5.7 | `done` |
 | T33 | Pesquisa web sobre a empresa no enrichment | M5.8 | `done` |
+| T34 | Simplificar entrevista (10→7, remover dinâmicas) | M5.9 | `done` |
 
 ---
 
 ## Active & Pending Tasks
-
-### T34: Substituir AgentConfig por Relatorio SOP estruturado (M5.9)
-
-**Objective**: Substituir AgentConfig/system_prompt por um relatorio SOP (Standard Operating Procedure) em JSON. OnboardingReport com: agent_identity, company, collection_policies, communication, guardrails, expert_recommendations (300+ words).
-
-**Dependencies**: T32, T33
-
-**Status**: `pending` — detalhar antes de implementar
-
----
 
 ### T35: CORS configuration (M6)
 

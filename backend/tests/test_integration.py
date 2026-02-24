@@ -6,22 +6,12 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.integration
 
 # ---------------------------------------------------------------------------
-# Realistic answers for all 10 core questions
+# Realistic answers for all 7 core questions
 # ---------------------------------------------------------------------------
 
 CORE_ANSWERS: dict[str, str] = {
     "core_0": "Sofia",
     "core_1": (
-        "A CollectAI oferece uma plataforma SaaS de cobranca digital que utiliza "
-        "agentes virtuais inteligentes via WhatsApp para automatizar o processo de "
-        "recuperacao de credito. Nossos produtos incluem agentes de cobranca "
-        "automatizados, painel de gestao de inadimplencia, integracao com ERPs "
-        "e sistemas bancarios, e analytics de performance de cobranca."
-    ),
-    "core_2": "ambos",
-    "core_3": "pix,boleto,cartao",
-    "core_4": "amigavel_firme",
-    "core_5": (
         "Nosso fluxo de cobranca comeca no D+5 do vencimento com envio automatico "
         "de mensagem via WhatsApp lembrando a pendencia. No D+10 enviamos uma segunda "
         "mensagem com opcoes de parcelamento. No D+15 um operador humano liga para o "
@@ -29,14 +19,22 @@ CORE_ANSWERS: dict[str, str] = {
         "para cobranca juridica. Atualmente temos 10 pessoas na operacao de cobranca "
         "e queremos reduzir para 3 com a automacao."
     ),
-    "core_6": "sim",
-    "core_7": "solicita_humano,divida_alta,agressivo",
-    "core_8": "ameacar,prometer_falso,linguagem_agressiva,fora_horario",
-    "core_9": (
+    "core_2": "sim",
+    "core_3": "sim",
+    "core_4": "sim",
+    "core_5": "sim",
+    "core_6": (
         "Quando o cliente e uma empresa parceira estrategica, devemos escalar para "
-        "o gerente comercial. Nao temos regulamentacao especifica alem do CDC. "
-        "As objecoes mais comuns sao 'ja paguei' e 'nao reconheco essa divida'."
+        "o gerente comercial. Tambem quando o devedor menciona acao judicial."
     ),
+}
+
+# Follow-up answers for policy questions answered "sim"
+POLICY_FOLLOWUP_ANSWERS: dict[str, str] = {
+    "followup_core_2_1": "Juros de 1% ao mes sobre o valor total da divida",
+    "followup_core_3_1": "Desconto de ate 10% para pagamento a vista nos primeiros 30 dias",
+    "followup_core_4_1": "Parcelamento em ate 12 vezes, parcela minima de R$50",
+    "followup_core_5_1": "Multa de 2% sobre o valor da parcela vencida",
 }
 
 
@@ -60,7 +58,7 @@ def _answer_question(
     data = resp.json()
     assert data["received"] is True
 
-    # Handle follow-up loop (server caps at 2 follow-ups per question)
+    # Handle follow-up loop (deterministic for core_2-5, LLM for core_1)
     follow_up_count = 0
     while follow_up_count < 3:
         next_q = data.get("next_question")
@@ -70,13 +68,18 @@ def _answer_question(
             break
 
         fu_id = next_q["question_id"]
-        fu_answer = (
-            f"Complementando: {answer[:100]}. "
-            "Isso se aplica de forma padronizada a todos os nossos clientes, "
-            "seguindo as politicas internas da empresa e as melhores praticas "
-            "do mercado de cobranca digital no Brasil. Nosso time revisou esses "
-            "processos recentemente e validou que funcionam bem para o nosso perfil."
-        )
+
+        # Use specific policy follow-up answer if available, else generic
+        if fu_id in POLICY_FOLLOWUP_ANSWERS:
+            fu_answer = POLICY_FOLLOWUP_ANSWERS[fu_id]
+        else:
+            fu_answer = (
+                f"Complementando: {answer[:100]}. "
+                "Isso se aplica de forma padronizada a todos os nossos clientes, "
+                "seguindo as politicas internas da empresa e as melhores praticas "
+                "do mercado de cobranca digital no Brasil. Nosso time revisou esses "
+                "processos recentemente e validou que funcionam bem para o nosso perfil."
+            )
         resp = client.post(
             f"/api/v1/sessions/{session_id}/interview/answer",
             json={"question_id": fu_id, "answer": fu_answer, "source": "text"},
@@ -85,55 +88,6 @@ def _answer_question(
         data = resp.json()
         assert data["received"] is True
         follow_up_count += 1
-
-    return data
-
-
-def _answer_dynamic_questions(
-    client: TestClient,
-    session_id: str,
-    initial_data: dict,
-) -> dict:
-    """Answer dynamic questions in a loop until phase becomes 'review'."""
-    data = initial_data
-    dynamic_count = 0
-    max_safety = 20  # 8 dynamic * 2 follow-ups + margin
-
-    while dynamic_count < max_safety:
-        # Check phase transitions
-        if data.get("phase") == "review":
-            return data
-        if data.get("next_question") is None:
-            # No next question — check via GET
-            resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
-            assert resp.status_code == 200
-            check = resp.json()
-            if check.get("phase") in ("review", "complete"):
-                return check
-            # The GET returned a question directly
-            data = {"next_question": check}
-
-        next_q = data.get("next_question")
-        if next_q is None:
-            break
-        if next_q.get("phase") in ("review", "complete"):
-            return data
-
-        q_id = next_q["question_id"]
-        q_text = next_q.get("question_text", "")
-
-        answer = (
-            f"Em relacao a '{q_text[:60]}': nossa abordagem e personalizada "
-            "para cada perfil de devedor. Consideramos o valor da divida, "
-            "historico de pagamento, tempo de atraso e o relacionamento com "
-            "o cliente. Temos scripts especificos para cada cenario, com "
-            "escalacao automatica quando o devedor nao responde em 48h ou "
-            "quando o valor ultrapassa R$5.000. Nossa taxa de recuperacao "
-            "atual e de 68% nos primeiros 30 dias."
-        )
-
-        data = _answer_question(client, session_id, q_id, answer)
-        dynamic_count += 1
 
     return data
 
@@ -179,7 +133,7 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert first_q["question_id"] == "core_0"
     assert first_q["phase"] == "core"
 
-    # ── Step 5: Answer all 16 core questions ─────────────────────────────
+    # ── Step 5: Answer all 7 core questions ──────────────────────────────
     current_qid = "core_0"
     last_data: dict = {}
     core_answered = 0
@@ -195,18 +149,15 @@ def test_full_onboarding_flow(client: TestClient) -> None:
             break
         current_qid = next_q["question_id"]
 
-    assert core_answered == 10, f"Expected 10 core answers, got {core_answered}"
+    assert core_answered == 7, f"Expected 7 core answers, got {core_answered}"
 
-    # Verify all 10 core questions answered
+    # Verify all 7 core questions answered
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/progress")
     assert resp.status_code == 200
     progress = resp.json()
-    assert progress["core_answered"] == 10
+    assert progress["core_answered"] == 7
 
-    # ── Step 6: Answer dynamic questions until review ────────────────────
-    final_data = _answer_dynamic_questions(client, session_id, last_data)
-
-    # Verify we reached review phase
+    # ── Step 6: Verify we reached review phase ───────────────────────────
     resp = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp.status_code == 200
     phase_check = resp.json()
@@ -217,7 +168,7 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert resp.status_code == 200
     review_data = resp.json()
     assert isinstance(review_data["answers"], list)
-    assert len(review_data["answers"]) >= 12
+    assert len(review_data["answers"]) >= 7
 
     resp = client.post(
         f"/api/v1/sessions/{session_id}/interview/review",

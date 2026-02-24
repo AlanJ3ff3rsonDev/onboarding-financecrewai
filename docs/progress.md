@@ -33,6 +33,26 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-24 — T34 (M5.9): Simplificar Entrevista (10→7 perguntas, remover dinâmicas)
+
+**Status**: completed
+
+**What was done**:
+- Rewrote `CORE_QUESTIONS`: 10→7 questions. New: core_1 (process), core_2-5 (4 yes/no policies), core_6 (escalation text optional). Removed: old core_1-4 (products, PF/PJ, payments, tone → enrichment), core_7-8 (escalation, guardrails → defaults), core_9 (context → removed)
+- Added `POLICY_FOLLOWUP_MAP`: deterministic follow-ups for core_2-5 when answered "sim" (no LLM needed)
+- Added `DEFAULT_ESCALATION_TRIGGERS`, `DEFAULT_GUARDRAILS`, `DEFAULT_TONE` — hardcoded defaults replacing old interview questions
+- Removed all dynamic question logic: `DYNAMIC_QUESTION_BANK`, `DYNAMIC_QUESTION_PROMPT`, `INTERVIEW_COMPLETENESS_PROMPT`, `generate_dynamic_question()`, `evaluate_interview_completeness()`, `_build_question_bank_context()`
+- Removed enrichment pre-fill: `ENRICHMENT_PREFILL_MAP`, `_apply_enrichment_prefill()`
+- Removed `dynamic_questions_asked`, `max_dynamic_questions` from `InterviewState`
+- Removed `dynamic_answered` from `InterviewProgressResponse`
+- Changed `MAX_FOLLOW_UPS_PER_QUESTION`: 2→1
+- Rewrote `build_prompt()` in agent_generator.py: sections 2-6 updated for new questions, uses defaults for tone/guardrails/escalation
+- Updated all 3 test files: test_interview (43 tests), test_agent_generator (23 tests), test_integration (1 test)
+
+**Tests**: 123/123 passing (134 → -15 removed dynamic/prefill + 5 new deterministic/defaults = ~124, some consolidation)
+
+---
+
 ### 2026-02-23 — T33 (M5.8): Pesquisa web sobre a empresa no enrichment (Serper API)
 
 **Status**: completed

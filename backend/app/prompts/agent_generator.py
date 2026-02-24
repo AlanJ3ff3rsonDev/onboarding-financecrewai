@@ -3,6 +3,11 @@
 import json
 
 from app.models.schemas import AgentConfig
+from app.prompts.interview import (
+    DEFAULT_ESCALATION_TRIGGERS,
+    DEFAULT_GUARDRAILS,
+    DEFAULT_TONE,
+)
 
 _AGENT_CONFIG_SCHEMA = json.dumps(
     AgentConfig.model_json_schema(), indent=2, ensure_ascii=False
@@ -96,14 +101,9 @@ def _get_answer_by_id(
 
 
 def _get_followups(responses: list[dict], parent_id: str) -> list[dict]:
-    """Get all follow-up responses for a parent question (e.g. followup_core_4_1)."""
+    """Get all follow-up responses for a parent question (e.g. followup_core_1_1)."""
     prefix = f"followup_{parent_id}_"
     return [r for r in responses if r.get("question_id", "").startswith(prefix)]
-
-
-def _get_dynamic_responses(responses: list[dict]) -> list[dict]:
-    """Get all dynamic question responses."""
-    return [r for r in responses if r.get("question_id", "").startswith("dynamic_")]
 
 
 def _format_answer_with_followups(
@@ -165,6 +165,20 @@ def _build_company_section(company_profile: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _format_policy_answer(responses: list[dict], question_id: str, policy_name: str) -> str:
+    """Format a yes/no policy answer with its follow-up detail."""
+    answer = _get_answer_by_id(responses, question_id)
+    followups = _get_followups(responses, question_id)
+    if answer.strip().lower() == "sim" and followups:
+        detail = followups[0].get("answer", "Sem detalhes")
+        return f"- {policy_name}: Sim — {detail}"
+    elif answer.strip().lower() == "sim":
+        return f"- {policy_name}: Sim (sem detalhes fornecidos)"
+    elif answer.strip().lower() == "nao":
+        return f"- {policy_name}: Não"
+    return f"- {policy_name}: {answer}"
+
+
 def build_prompt(
     company_profile: dict | None,
     interview_responses: list[dict],
@@ -199,98 +213,62 @@ def build_prompt(
     # Section 1: Company Context (enrichment)
     sections.append(_build_company_section(company_profile))
 
-    # Section 2: Modelo de Negócio
-    s2_lines = ["## 2. Modelo de Negócio"]
-    s2_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_1", "Produtos/serviços oferecidos"
-        )
-    )
-    s2_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_2", "Tipo de cliente (PF/PJ)"
-        )
-    )
-    s2_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_3", "Métodos de pagamento aceitos"
-        )
-    )
+    # Section 2: Modelo de Negócio (from enrichment only)
+    s2_lines = ["## 2. Modelo de Negócio (extraído do site/pesquisa web)"]
+    if company_profile:
+        products = company_profile.get("products_description", "Não informado")
+        audience = company_profile.get("target_audience", "Não informado")
+        payments = company_profile.get("payment_methods_mentioned", "Não informado")
+        s2_lines.append(f"- Produtos/Serviços: {products}")
+        s2_lines.append(f"- Público-alvo: {audience}")
+        s2_lines.append(f"- Métodos de pagamento: {payments}")
+    else:
+        s2_lines.append("- Dados não disponíveis. Inferir a partir do contexto geral.")
     sections.append("\n".join(s2_lines))
 
-    # Section 3: Processo de Cobrança
+    # Section 3: Processo de Cobrança (new core_1)
     s3_lines = ["## 3. Processo de Cobrança"]
     s3_lines.append(
         _format_answer_with_followups(
-            interview_responses, "core_5", "Fluxo descrito pelo cliente"
+            interview_responses, "core_1", "Fluxo descrito pelo cliente"
         )
     )
     sections.append("\n".join(s3_lines))
 
-    # Section 4: Tom e Comunicação
+    # Section 4: Tom e Comunicação (default + enrichment override)
     s4_lines = ["## 4. Tom e Comunicação"]
-    s4_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_4", "Tom escolhido"
-        )
-    )
-    s4_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_8",
-            "O que nunca fazer/dizer (segundo o cliente)"
-        )
-    )
+    tone = DEFAULT_TONE
+    if company_profile and company_profile.get("communication_tone"):
+        detected_tone = company_profile["communication_tone"].strip()
+        s4_lines.append(f"- Tom detectado no site: {detected_tone}")
+        s4_lines.append(f"- Tom padrão: {DEFAULT_TONE}")
+        s4_lines.append("- Use o tom detectado no site se disponível, senão use o padrão.")
+    else:
+        s4_lines.append(f"- Tom padrão: {tone}")
     sections.append("\n".join(s4_lines))
 
-    # Section 5: Políticas de Negociação
+    # Section 5: Políticas de Negociação (core_2-5 + follow-ups)
     s5_lines = ["## 5. Políticas de Negociação"]
-    s5_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_6", "Política de desconto/condições especiais"
-        )
-    )
+    s5_lines.append(_format_policy_answer(interview_responses, "core_2", "Juros por atraso"))
+    s5_lines.append(_format_policy_answer(interview_responses, "core_3", "Desconto para pagamento"))
+    s5_lines.append(_format_policy_answer(interview_responses, "core_4", "Parcelamento"))
+    s5_lines.append(_format_policy_answer(interview_responses, "core_5", "Multa por atraso"))
     sections.append("\n".join(s5_lines))
 
-    # Section 6: Guardrails e Escalação
+    # Section 6: Guardrails e Escalação (defaults + core_6 optional text)
     s6_lines = ["## 6. Guardrails e Escalação"]
-    s6_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_7", "Gatilhos de escalação"
-        )
-    )
-    s6_lines.append(
-        _format_answer_with_followups(
-            interview_responses, "core_8",
-            "O que nunca fazer/dizer"
-        )
-    )
-    sections.append("\n".join(s6_lines))
-
-    # Section 7: Contexto Adicional (conditional — only if core_9 answered)
-    core_9_answer = _get_answer_by_id(interview_responses, "core_9")
+    s6_lines.append("### Gatilhos de escalação (padrão)")
+    for trigger in DEFAULT_ESCALATION_TRIGGERS:
+        s6_lines.append(f"- {trigger}")
+    # Add client-specified escalation triggers if provided
+    core_6_answer = _get_answer_by_id(interview_responses, "core_6")
     skip_answers = {"nao", "não", "nao respondida", "não respondida", "n", "passo"}
-    if core_9_answer.strip().lower() not in skip_answers:
-        sections.append(
-            f"## 7. Contexto Adicional do Negócio\n"
-            f"- {core_9_answer}"
-        )
-
-    # Additional Context: dynamic questions + remaining follow-ups
-    dynamic_responses = _get_dynamic_responses(interview_responses)
-    if dynamic_responses:
-        dyn_lines = [
-            "## Contexto Adicional (perguntas dinâmicas geradas pela IA)"
-        ]
-        for dr in dynamic_responses:
-            q_text = dr.get("question_text", "Pergunta dinâmica")
-            answer = dr.get("answer", "")
-            dyn_lines.append(f"- {q_text}: {answer}")
-            # Include follow-ups on dynamic questions
-            for fu in _get_followups(interview_responses, dr["question_id"]):
-                fu_q = fu.get("question_text", "Aprofundamento")
-                fu_a = fu.get("answer", "")
-                dyn_lines.append(f"  - (Aprofundamento) {fu_q}: {fu_a}")
-        sections.append("\n".join(dyn_lines))
+    if core_6_answer.strip().lower() not in skip_answers:
+        s6_lines.append(f"- Situação adicional indicada pelo cliente: {core_6_answer}")
+    s6_lines.append("\n### O que o agente NUNCA deve fazer (padrão)")
+    for guardrail in DEFAULT_GUARDRAILS:
+        s6_lines.append(f"- {guardrail}")
+    sections.append("\n".join(s6_lines))
 
     # Review notes (if user added any during review step)
     review_notes = _get_answer_by_id(interview_responses, "review_notes")
@@ -304,10 +282,10 @@ def build_prompt(
     sections.append(
         "## Dicas de Mapeamento\n"
         "Use estas correspondências ao preencher o JSON:\n"
-        '- core_4: "formal" → tone.style "formal", '
-        '"amigavel_firme" → "friendly", '
-        '"empatico" → "empathetic", '
-        '"direto_assertivo" → "assertive"\n'
+        '- tone.style: use "friendly" como padrão (amigável mas firme). '
+        'Se enrichment detectar tom diferente, mapear: '
+        '"formal" → "formal", "empático" → "empathetic", '
+        '"direto/assertivo" → "assertive"\n'
         '- agent_type: use "compliant" por padrão\n'
         "- tools: inclua send_whatsapp_message, check_payment_status, "
         "escalate_to_human, schedule_follow_up como base. "
