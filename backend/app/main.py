@@ -3,7 +3,9 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.database import Base, engine
 from app.models import orm as _orm  # noqa: F401 — register models with Base
 from app.routers import agent, audio, enrichment, interview, sessions, simulation
@@ -22,6 +24,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS.split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(sessions.router)
 app.include_router(enrichment.router)

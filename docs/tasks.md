@@ -69,6 +69,7 @@
 | T33 | Pesquisa web sobre a empresa no enrichment | M5.8 | `done` |
 | T34 | Simplificar entrevista (10→7, remover dinâmicas) | M5.9 | `done` |
 | T34.1 | Substituir AgentConfig por OnboardingReport (SOP) | M5.9 | `done` |
+| T35 | CORS configuration | M6 | `done` |
 
 ---
 
@@ -82,7 +83,7 @@
 - CORSMiddleware in app/main.py
 - Allowed origins: portal.financecrew.ai, localhost:* (via ALLOWED_ORIGINS env var)
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

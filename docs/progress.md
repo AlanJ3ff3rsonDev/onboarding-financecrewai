@@ -33,6 +33,20 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-24 — T35 (M6): CORS Configuration
+
+**Status**: completed
+
+**What was done**:
+- Added `ALLOWED_ORIGINS` field to `Settings` in `config.py` (default: `localhost:3000,localhost:5173,portal.financecrew.ai`)
+- Added `CORSMiddleware` to `main.py` after app creation, before routers
+- Updated `.env.example` with `ALLOWED_ORIGINS`
+
+**Tests**: 122/122 passing (unit). Integration test unchanged (pre-existing flaky, needs real API).
+**Manual**: Verified with curl — allowed origin gets `access-control-allow-origin` header, disallowed origin does not. Preflight (OPTIONS) returns correct headers.
+
+---
+
 ### 2026-02-24 — T34.1 (M5.9): Substituir AgentConfig por OnboardingReport (SOP)
 
 **Status**: completed
@@ -89,58 +103,4 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ---
 
-### 2026-02-23 — T32 (M5.7): Remover avatar + reestruturar perguntas core (16→10)
-
-**Status**: completed
-
-**What was done**:
-
-Part A — Remove Avatar:
-- Deleted `upload_avatar` endpoint from `routers/agent.py` (+ ALLOWED_AVATAR_TYPES, MAX_AVATAR_SIZE, UPLOADS_DIR, UploadFile import)
-- Removed `agent_avatar_path` from ORM model and `SessionResponse` schema
-- Removed StaticFiles mount from `main.py` (+ Path, StaticFiles imports)
-- Deleted `tests/test_avatar.py` (7 tests) and `app/uploads/` directory
-
-Part B — Restructure Core Questions (16→10):
-- Rewrote `CORE_QUESTIONS` in `interview.py`: 10 questions (2 text optional, 2 text required, 3 select, 3 multiselect)
-- New questions: core_2 (PF/PJ select), core_6 (desconto select), core_8 (never-do multiselect), core_9 (business-specific text optional)
-- Removed: core_3 (overdue), core_6-9 (financial details → spreadsheet), core_10/core_10_open, core_11-14
-- Updated `DYNAMIC_QUESTION_BANK`: 7→4 categories (removed legal_judicial, segmentation, payment_operations, "B2C ou B2B?" from business_model)
-- Updated `ENRICHMENT_PREFILL_MAP`: core_2→core_3 (payment), core_5→core_4 (tone)
-- Rewrote `build_prompt()` in `agent_generator.py`: 9→7 sections, new ID mapping, conditional core_9 section
-
-Part C — Update Tests:
-- Updated all counts in test_interview.py (16→10), test_agent_generator.py (16→10 responses), test_integration.py (16→10)
-- Deleted 3 obsolete tests (test_financial_questions_are_open_text, test_core_3_is_text_question, test_core_10_open_exists)
-- Added 2 new tests (test_select_questions_have_options, test_multiselect_questions_have_options)
-- Updated _dynamic_state helper, _session_in_review_phase helper, all progress tests, follow-up tests, enrichment pre-fill tests
-
-**Tests**: 122/122 passing (130 - 7 avatar - 3 obsolete + 2 new = 122)
-**Issues**: None
-
----
-
-### 2026-02-23 — Doc Update: Simplificar onboarding (16→10 perguntas, remover avatar)
-
-**Status**: completed (docs only)
-
-**What was done**:
-- PRD.md: Updated core questions table (16→10), removed avatar from features/user flow, added planilha vs onboarding data split
-- tech_design.md: Removed Gemini API, avatar endpoints, agent_avatar_path, avatar_generator.py. Updated questions, pre-fill map, service architecture
-- tasks.md: T31 marked out_of_scope, T32 redefined as "remove avatar + restructure core questions", T33/T34 simplified
-
-**New core questions** (10, majority select/multiselect):
-- core_0: agent name (text, optional)
-- core_1: products (text, pre-filled)
-- core_2: PF/PJ/ambos (select)
-- core_3: payment methods (multiselect, pre-filled)
-- core_4: tone (select, pre-filled)
-- core_5: collection process (text)
-- core_6: discount/special conditions (select)
-- core_7: escalation triggers (multiselect)
-- core_8: never-do list (multiselect)
-- core_9: business-specific info (text, optional)
-
-**Removed from scope**: avatar upload (T31), avatar generation (old T32), Gemini API
-**Moved to planilha**: juros, multa, parcelamento, desconto %, payment verification, regulations
 
