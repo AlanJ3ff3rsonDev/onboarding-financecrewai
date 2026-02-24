@@ -33,6 +33,26 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-24 — T34.1 (M5.9): Substituir AgentConfig por OnboardingReport (SOP)
+
+**Status**: completed
+
+**What was done**:
+- Replaced `AgentConfig` schema with `OnboardingReport`: 9 new sub-models (AgentIdentity, ReportCompany, EnrichmentSummary, CollectionProfile, CollectionPolicies, Communication, ReportGuardrails, ReportMetadata, OnboardingReport)
+- Removed 7 old schemas: CompanyContext, ToneConfig, NegotiationPolicies, Guardrails, ScenarioResponses, AgentMetadata, AgentConfig
+- Key change: `system_prompt` (agent instructions) → `expert_recommendations` (analyst report, 300+ words PT-BR)
+- Key change: `scenario_responses` (4 fixed scenarios) → `collection_profile` (expert-inferred debt context)
+- Renamed: `generate_agent_config()` → `generate_onboarding_report()`, `adjust_agent_config()` → `adjust_onboarding_report()`
+- API response key: `"agent_config"` → `"onboarding_report"` in generate/adjust endpoints
+- Simulation prompt: uses expert_recommendations + collection_profile instead of system_prompt + scenario_responses
+- ORM column `agent_config` kept (no migration needed)
+- Renamed test file: `test_agent_config.py` → `test_onboarding_report.py`
+- Updated cli_test.py display: expert_recommendations, collection_profile, communication, enrichment_summary
+
+**Tests**: 122/122 passing (unit). Integration test flaky (enrichment scraping, pre-existing).
+
+---
+
 ### 2026-02-24 — T34 (M5.9): Simplificar Entrevista (10→7 perguntas, remover dinâmicas)
 
 **Status**: completed

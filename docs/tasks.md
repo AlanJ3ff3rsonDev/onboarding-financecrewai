@@ -23,7 +23,7 @@
 | **M5.6** | Refinamento de Perguntas | T29 | DONE |
 | **M5.7** | Personalizacao do Agente + Reestruturacao Perguntas | T30-T32 | DONE |
 | **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | DONE |
-| **M5.9** | Simplificar Entrevista (10→7, remover dinâmicas) | T34 | DONE |
+| **M5.9** | Simplificar Entrevista + SOP Report | T34, T34.1 | DONE |
 | **M6** | Deploy | T35-T37 | Pending |
 | **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
 | **M8** | Integracao Directus | T45 | Future |
@@ -68,6 +68,7 @@
 | T32 | Remover avatar + reestruturar perguntas core (16→10) | M5.7 | `done` |
 | T33 | Pesquisa web sobre a empresa no enrichment | M5.8 | `done` |
 | T34 | Simplificar entrevista (10→7, remover dinâmicas) | M5.9 | `done` |
+| T34.1 | Substituir AgentConfig por OnboardingReport (SOP) | M5.9 | `done` |
 
 ---
 
@@ -75,7 +76,7 @@
 
 ### T35: CORS configuration (M6)
 
-**Dependencies**: T34
+**Dependencies**: T34.1
 
 **Definition of Done**:
 - CORSMiddleware in app/main.py

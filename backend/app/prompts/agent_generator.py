@@ -1,92 +1,85 @@
-"""Prompt for generating a complete AgentConfig from onboarding data."""
+"""Prompt for generating a complete OnboardingReport from onboarding data."""
 
 import json
 
-from app.models.schemas import AgentConfig
+from app.models.schemas import OnboardingReport
 from app.prompts.interview import (
     DEFAULT_ESCALATION_TRIGGERS,
     DEFAULT_GUARDRAILS,
     DEFAULT_TONE,
 )
 
-_AGENT_CONFIG_SCHEMA = json.dumps(
-    AgentConfig.model_json_schema(), indent=2, ensure_ascii=False
+_REPORT_SCHEMA = json.dumps(
+    OnboardingReport.model_json_schema(), indent=2, ensure_ascii=False
 )
 
 SYSTEM_PROMPT = (
-    "You are an expert debt collection agent configurator for Brazilian businesses. "
+    "You are an expert debt collection consultant for Brazilian businesses. "
     "You receive structured data about a company (from website analysis and a detailed interview) "
-    "and generate a complete AgentConfig JSON that will power an AI collection agent.\n\n"
-    "IMPORTANT: The collection agent you are configuring is ALREADY AN EXPERT in debt collection. "
-    "It already knows how to handle common objections ('já paguei', 'não reconheço a dívida', "
-    "'não posso pagar agora'), how to deal with aggressive debtors, how to open conversations, "
-    "and all standard collection best practices. Use your expertise to generate comprehensive "
-    "scenario_responses and fill any gaps with BEST PRACTICES adapted to the company's tone "
-    "and policies. Do NOT leave scenario_responses generic — make them specific to the company's "
-    "tone, payment methods, and negotiation policies.\n\n"
-    "Your most important output is the 'system_prompt' field — this is the detailed instruction set "
-    "that the collection agent will follow in every conversation with debtors. It must be:\n"
-    "- Comprehensive (at least 300 words)\n"
-    "- Segment-specific (reflect the company's industry and context)\n"
+    "and generate a complete OnboardingReport JSON — a structured SOP document that captures "
+    "everything about the company's collection operation.\n\n"
+    "IMPORTANT: You are NOT generating a system_prompt or agent instructions. "
+    "You are generating a structured report that a downstream platform will use "
+    "to configure a collection agent. The report must be factual and comprehensive.\n\n"
+    "Your most important output is the 'expert_recommendations' field — this is your expert "
+    "analysis and recommendations for the company's collection operation. It must be:\n"
+    "- CRITICAL: At least 300 words\n"
     "- Written entirely in Brazilian Portuguese\n"
-    "- Cover: tone, negotiation rules, escalation triggers, prohibited actions, scenario handling, "
-    "and payment instructions\n\n"
+    "- Cover: análise do segmento, recomendações de tom, estratégias de negociação, "
+    "riscos do setor, melhores práticas adaptadas ao perfil da empresa\n"
+    "- Be specific to the company's industry and context, not generic advice\n\n"
+    "The 'collection_profile' section requires expert inference based on the company's segment, "
+    "products, and interview answers. Infer debt_type, typical_debtor_profile, "
+    "business_specific_objections, payment_verification_process, and sector_regulations "
+    "from context.\n\n"
     "Rules:\n"
-    "- All text content in the AgentConfig (system_prompt, scenario_responses, "
-    "opening_message_template, prohibited_words, preferred_words, never_do, never_say) "
-    "must be in Portuguese.\n"
-    "- The negotiation_policies fields (discount_policy, installment_policy, interest_policy, "
-    "penalty_policy) are text descriptions of the company's methodology, not numeric limits. "
-    "Extract the policy descriptions from the interview answers.\n"
-    "- The agent_type should be 'compliant' unless the interview explicitly indicates otherwise.\n"
-    "- Generate realistic, actionable scenario responses based on the company's context.\n"
-    "- The tools list should include tools appropriate for the company's payment methods "
-    "(e.g. generate_pix_payment_link if PIX is accepted).\n"
-    "- Always respond with valid JSON matching the AgentConfig schema exactly."
+    "- All text content in the OnboardingReport must be in Portuguese.\n"
+    "- The collection_policies fields (discount_policy, installment_policy, interest_policy, "
+    "penalty_policy) are text descriptions of the company's methodology.\n"
+    "- communication.tone_style: use 'friendly' as default. "
+    "Map detected tones: 'formal' → 'formal', 'empático' → 'empathetic', "
+    "'direto/assertivo' → 'assertive'.\n"
+    "- Always respond with valid JSON matching the OnboardingReport schema exactly."
 )
 
 ADJUSTMENT_SYSTEM_PROMPT = (
-    "You are an expert debt collection agent configurator for Brazilian businesses. "
-    "The collection agent is ALREADY AN EXPERT in debt collection — it knows all "
-    "standard best practices. Use your expertise to fill gaps and generate comprehensive responses.\n\n"
-    "A user has just adjusted an existing agent configuration. "
-    "Your job is to regenerate ONLY two fields to stay consistent with the changes:\n"
-    "1. 'system_prompt': The complete instruction set for the collection agent "
-    "(minimum 300 words, in Brazilian Portuguese)\n"
-    "2. 'scenario_responses': The four scenario response strings (already_paid, "
-    "dont_recognize_debt, cant_pay_now, aggressive_debtor) — all in Brazilian Portuguese, "
-    "adapted to the company's specific tone and policies\n\n"
-    "You will receive the FULL updated agent configuration. "
-    "Regenerate system_prompt and scenario_responses to reflect ALL current settings "
-    "(especially tone, negotiation policies, guardrails, and company context). "
-    "Return ONLY a JSON object with exactly two keys: 'system_prompt' (string) and "
-    "'scenario_responses' (object with the four scenario keys). "
-    "Do NOT return the full AgentConfig — only those two fields."
+    "You are an expert debt collection consultant for Brazilian businesses. "
+    "A user has just adjusted an existing onboarding report. "
+    "Your job is to regenerate ONLY the 'expert_recommendations' field "
+    "to stay consistent with the changes.\n\n"
+    "You will receive the FULL updated report. "
+    "Regenerate expert_recommendations to reflect ALL current settings "
+    "(especially communication tone, collection policies, guardrails, and company context). "
+    "The expert_recommendations must be at least 300 words, in Brazilian Portuguese, "
+    "and specific to the company.\n\n"
+    "Return ONLY a JSON object with exactly one key: "
+    '{"expert_recommendations": "..."}. '
+    "Do NOT return the full OnboardingReport — only that one field."
 )
 
 
 def build_adjustment_prompt(
-    adjusted_config: dict,
+    adjusted_report: dict,
     adjustments_summary: str,
 ) -> str:
-    """Build user message for regenerating system_prompt + scenario_responses.
+    """Build user message for regenerating expert_recommendations.
 
     Args:
-        adjusted_config: The full agent config dict after applying user adjustments.
+        adjusted_report: The full report dict after applying user adjustments.
         adjustments_summary: Human-readable summary of what was changed.
 
     Returns:
         The user message to send alongside ADJUSTMENT_SYSTEM_PROMPT.
     """
-    config_json = json.dumps(adjusted_config, indent=2, ensure_ascii=False)
+    report_json = json.dumps(adjusted_report, indent=2, ensure_ascii=False)
     return (
-        f"O usuário fez os seguintes ajustes na configuração do agente:\n"
+        f"O usuário fez os seguintes ajustes no relatório:\n"
         f"{adjustments_summary}\n\n"
-        f"Configuração atual completa (após ajustes):\n"
-        f"```json\n{config_json}\n```\n\n"
-        f"Regenere o 'system_prompt' e o 'scenario_responses' para refletir "
+        f"Relatório atual completo (após ajustes):\n"
+        f"```json\n{report_json}\n```\n\n"
+        f"Regenere o 'expert_recommendations' para refletir "
         f"todas as configurações atuais. Retorne apenas:\n"
-        f'{{"system_prompt": "...", "scenario_responses": {{...}}}}'
+        f'{{"expert_recommendations": "..."}}'
     )
 
 
@@ -185,7 +178,7 @@ def build_prompt(
     company_profile: dict | None,
     interview_responses: list[dict],
 ) -> str:
-    """Assemble all onboarding data into a structured prompt for AgentConfig generation.
+    """Assemble all onboarding data into a structured prompt for OnboardingReport generation.
 
     Args:
         company_profile: CompanyProfile dict from enrichment (or None).
@@ -199,7 +192,7 @@ def build_prompt(
 
     # Intro
     sections.append(
-        "Gere um AgentConfig JSON completo para configurar um agente de cobrança "
+        "Gere um OnboardingReport JSON completo para documentar a operação de cobrança "
         "com base nos dados abaixo."
     )
 
@@ -284,22 +277,22 @@ def build_prompt(
     sections.append(
         "## Dicas de Mapeamento\n"
         "Use estas correspondências ao preencher o JSON:\n"
-        '- tone.style: use "friendly" como padrão (amigável mas firme). '
+        '- communication.tone_style: use "friendly" como padrão (amigável mas firme). '
         'Se enrichment detectar tom diferente, mapear: '
         '"formal" → "formal", "empático" → "empathetic", '
         '"direto/assertivo" → "assertive"\n'
-        '- agent_type: use "compliant" por padrão\n'
-        "- tools: inclua send_whatsapp_message, check_payment_status, "
-        "escalate_to_human, schedule_follow_up como base. "
-        "Adicione generate_pix_payment_link se PIX aceito, "
-        "generate_boleto se boleto aceito."
+        "- collection_profile: infira debt_type, typical_debtor_profile, "
+        "business_specific_objections, payment_verification_process e "
+        "sector_regulations com base no segmento e contexto da empresa\n"
+        "- collection_policies.collection_flow_description: resuma o fluxo de cobrança "
+        "descrito pelo cliente na entrevista"
     )
 
     # JSON Schema
     sections.append(
-        "## Esquema JSON de Saída (AgentConfig)\n"
+        "## Esquema JSON de Saída (OnboardingReport)\n"
         "Gere EXATAMENTE um JSON válido que se encaixe neste schema:\n\n"
-        f"```json\n{_AGENT_CONFIG_SCHEMA}\n```"
+        f"```json\n{_REPORT_SCHEMA}\n```"
     )
 
     return "\n\n".join(sections)

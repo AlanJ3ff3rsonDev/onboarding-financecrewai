@@ -1,4 +1,4 @@
-"""Tests for agent generation prompt (T19), service (T20), and endpoints (T21)."""
+"""Tests for onboarding report generation prompt, service, and endpoints."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,7 +11,7 @@ from app.prompts.agent_generator import SYSTEM_PROMPT, build_prompt
 from app.services.agent_generator import (
     _apply_dotted_path_adjustments,
     _apply_sanity_checks,
-    generate_agent_config,
+    generate_onboarding_report,
 )
 
 
@@ -114,7 +114,7 @@ def test_build_prompt():
     assert isinstance(prompt, str)
     assert len(prompt) > 500
     assert "CollectAI" in prompt
-    assert "AgentConfig" in prompt
+    assert "OnboardingReport" in prompt
     # SYSTEM_PROMPT exists and is non-empty
     assert len(SYSTEM_PROMPT) > 100
 
@@ -160,7 +160,7 @@ def test_prompt_includes_all_sections():
 
     # JSON Schema present
     assert "Esquema JSON" in prompt
-    assert "system_prompt" in prompt  # schema field
+    assert "OnboardingReport" in prompt  # schema reference
 
 
 def test_prompt_skips_agent_identity_when_declined():
@@ -178,7 +178,7 @@ def test_prompt_handles_missing_data():
     prompt = build_prompt(None, [])
     assert isinstance(prompt, str)
     assert len(prompt) > 100
-    assert "AgentConfig" in prompt
+    assert "OnboardingReport" in prompt
     assert "Nenhum dado de enriquecimento" in prompt
     assert "Não respondida" in prompt
 
@@ -201,50 +201,50 @@ def test_prompt_handles_missing_data():
 
 
 # ---------------------------------------------------------------------------
-# T20: Agent generation service tests
+# Service tests
 # ---------------------------------------------------------------------------
 
-def _valid_agent_config_dict() -> dict:
-    """A valid AgentConfig dict as the LLM would return it."""
+def _valid_report_dict() -> dict:
+    """A valid OnboardingReport dict as the LLM would return it."""
     return {
-        "agent_type": "compliant",
-        "company_context": {
+        "agent_identity": {"name": "Sofia"},
+        "company": {
             "name": "CollectAI",
             "segment": "Tecnologia / Cobrança digital",
             "products": "Agentes de cobrança automatizados via WhatsApp",
             "target_audience": "Empresas B2B com carteira de inadimplentes",
+            "website": "https://collectai.com.br",
         },
-        "system_prompt": (
-            "Você é um agente de cobrança virtual da CollectAI, especializado em "
-            "recuperação de crédito para empresas B2B. Sua comunicação deve ser "
-            "amigável, porém firme, sempre tratando o devedor pelo primeiro nome. "
-            "Nunca ameace o devedor, nunca mencione SPC ou Serasa, e nunca entre "
-            "em contato fora do horário comercial. Quando o devedor solicitar falar "
-            "com um humano, apresentar dívida de alto valor, ou comportamento "
-            "agressivo, escale imediatamente para um atendente humano. "
-            "Ao negociar, ofereça desconto apenas quando houver resistência, "
-            "até o máximo de 10% para pagamento integral. O parcelamento pode ser "
-            "feito em até 12 vezes, com valor mínimo de R$50 por parcela. "
-            "Aceite pagamentos via Pix, boleto ou cartão de crédito. "
-            "Sempre se identifique como inteligência artificial no início da conversa."
-        ),
-        "tone": {
-            "style": "friendly",
-            "use_first_name": True,
-            "prohibited_words": ["SPC", "Serasa", "processo", "ameaça"],
-            "preferred_words": ["acordo", "solução", "facilidade"],
-            "opening_message_template": (
-                "Olá {nome}, aqui é a assistente virtual da CollectAI. "
-                "Gostaria de conversar sobre uma pendência financeira."
-            ),
+        "enrichment_summary": {
+            "website_analysis": "Empresa de tecnologia focada em cobrança digital.",
+            "web_research": "Líder em automação de cobrança no Brasil.",
         },
-        "negotiation_policies": {
-            "discount_policy": "Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
+        "collection_profile": {
+            "debt_type": "Inadimplência B2B",
+            "typical_debtor_profile": "Empresas com atraso de 30-90 dias",
+            "business_specific_objections": "Contestação de valores",
+            "payment_verification_process": "Integração bancária automática",
+            "sector_regulations": "CDC, LGPD, BACEN",
+        },
+        "collection_policies": {
+            "overdue_definition": "A partir de 5 dias após vencimento",
+            "discount_policy": "Até 10% de desconto para pagamento à vista",
             "installment_policy": "Parcelamento em até 12x, parcela mínima de R$50",
             "interest_policy": "Juros de 1% ao mês sobre o valor total",
             "penalty_policy": "Multa de 2% sobre o valor da parcela vencida",
             "payment_methods": ["pix", "boleto", "cartao_credito"],
-            "can_generate_payment_link": True,
+            "escalation_triggers": [
+                "Devedor solicita humano",
+                "Dívida acima de R$5.000",
+                "Comportamento agressivo",
+            ],
+            "escalation_custom_rules": "Escalar para gerente comercial se parceiro estratégico",
+            "collection_flow_description": "D+5 WhatsApp, D+15 ligação, D+60 jurídico",
+        },
+        "communication": {
+            "tone_style": "friendly",
+            "prohibited_actions": ["Ameaçar o devedor", "Cobrar fora do horário"],
+            "brand_specific_language": "Usar 'pendência' em vez de 'dívida'",
         },
         "guardrails": {
             "never_do": [
@@ -252,46 +252,26 @@ def _valid_agent_config_dict() -> dict:
                 "Contatar fora do horário comercial",
             ],
             "never_say": ["SPC", "Serasa", "processo judicial"],
-            "escalation_triggers": [
-                "Devedor solicita humano",
-                "Dívida acima de R$5.000",
-                "Comportamento agressivo",
-            ],
+            "must_identify_as_ai": True,
             "follow_up_interval_days": 3,
             "max_attempts_before_stop": 10,
-            "must_identify_as_ai": True,
         },
-        "scenario_responses": {
-            "already_paid": (
-                "Entendo! Pode me enviar o comprovante de pagamento para "
-                "que eu possa verificar e atualizar nosso sistema?"
-            ),
-            "dont_recognize_debt": (
-                "Sem problemas. Vou encaminhar os detalhes da cobrança para "
-                "que você possa verificar. Posso enviar por e-mail ou WhatsApp?"
-            ),
-            "cant_pay_now": (
-                "Compreendo a situação. Podemos encontrar uma solução que "
-                "caiba no seu orçamento. Que tal parcelarmos o valor?"
-            ),
-            "aggressive_debtor": (
-                "Entendo sua frustração. Vou transferir você para um dos "
-                "nossos especialistas que poderá ajudá-lo melhor."
-            ),
-        },
-        "tools": [
-            "send_whatsapp_message",
-            "generate_pix_payment_link",
-            "generate_boleto",
-            "check_payment_status",
-            "escalate_to_human",
-            "schedule_follow_up",
-        ],
+        "expert_recommendations": (
+            "A CollectAI atua no segmento de cobrança digital B2B, atendendo empresas "
+            "de médio porte com carteiras de inadimplentes. Recomenda-se adotar um tom "
+            "amigável mas firme nas comunicações, priorizando a resolução amigável. "
+            "O fluxo de cobrança deve começar com contato via WhatsApp no D+5, seguido "
+            "de ligação no D+15 e encaminhamento jurídico no D+60. É fundamental "
+            "respeitar as normas do CDC e LGPD em todas as interações. Para o segmento "
+            "de tecnologia B2B, as principais objeções são contestação de valores e "
+            "alegação de não recebimento do serviço. Recomenda-se ter processos claros "
+            "de verificação de pagamento via integração bancária."
+        ),
         "metadata": {
             "version": 1,
             "generated_at": "2026-02-20T12:00:00+00:00",
-            "onboarding_session_id": "test-session-123",
-            "generation_model": "gpt-4.1-mini",
+            "session_id": "test-session-123",
+            "model": "gpt-4.1-mini",
         },
     }
 
@@ -305,43 +285,42 @@ def _mock_openai_response(data: dict) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_generate_agent_config():
-    """generate_agent_config with valid LLM output returns AgentConfig."""
-    config_dict = _valid_agent_config_dict()
-    mock_response = _mock_openai_response(config_dict)
+async def test_generate_onboarding_report():
+    """generate_onboarding_report with valid LLM output returns OnboardingReport."""
+    report_dict = _valid_report_dict()
+    mock_response = _mock_openai_response(report_dict)
 
     with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
         instance = MockClient.return_value
         instance.chat.completions.create = AsyncMock(return_value=mock_response)
 
-        result = await generate_agent_config(
+        result = await generate_onboarding_report(
             _sample_company_profile(),
             _sample_interview_responses(),
             session_id="sess-001",
         )
 
-    assert result.agent_type == "compliant"
-    assert result.company_context.name == "CollectAI"
-    assert len(result.system_prompt) >= 200
-    assert result.tone.style == "friendly"
-    assert result.negotiation_policies.discount_policy == "Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste"
-    assert result.metadata.onboarding_session_id == "sess-001"
-    assert result.metadata.generation_model == "gpt-4.1-mini"
+    assert result.company.name == "CollectAI"
+    assert len(result.expert_recommendations) >= 200
+    assert result.communication.tone_style == "friendly"
+    assert result.collection_policies.discount_policy == "Até 10% de desconto para pagamento à vista"
+    assert result.metadata.session_id == "sess-001"
+    assert result.metadata.model == "gpt-4.1-mini"
 
 
 @pytest.mark.asyncio
-async def test_sanity_check_system_prompt_quality():
-    """Short system_prompt raises ValueError."""
-    config_dict = _valid_agent_config_dict()
-    config_dict["system_prompt"] = "Muito curto"  # < 200 chars
-    mock_response = _mock_openai_response(config_dict)
+async def test_sanity_check_expert_recommendations_quality():
+    """Short expert_recommendations raises ValueError."""
+    report_dict = _valid_report_dict()
+    report_dict["expert_recommendations"] = "Muito curto"  # < 200 chars
+    mock_response = _mock_openai_response(report_dict)
 
     with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
         instance = MockClient.return_value
         instance.chat.completions.create = AsyncMock(return_value=mock_response)
 
         with pytest.raises(ValueError, match="200"):
-            await generate_agent_config(
+            await generate_onboarding_report(
                 _sample_company_profile(),
                 _sample_interview_responses(),
             )
@@ -349,9 +328,9 @@ async def test_sanity_check_system_prompt_quality():
 
 @pytest.mark.asyncio
 async def test_generate_retries_on_failure():
-    """First LLM call fails, second succeeds → returns valid config."""
-    config_dict = _valid_agent_config_dict()
-    mock_response = _mock_openai_response(config_dict)
+    """First LLM call fails, second succeeds → returns valid report."""
+    report_dict = _valid_report_dict()
+    mock_response = _mock_openai_response(report_dict)
 
     with patch("app.services.agent_generator.AsyncOpenAI") as MockClient:
         instance = MockClient.return_value
@@ -359,12 +338,12 @@ async def test_generate_retries_on_failure():
             side_effect=[OpenAIError("timeout"), mock_response]
         )
 
-        result = await generate_agent_config(
+        result = await generate_onboarding_report(
             _sample_company_profile(),
             _sample_interview_responses(),
         )
 
-    assert result.agent_type == "compliant"
+    assert result.company.name == "CollectAI"
     assert instance.chat.completions.create.call_count == 2
 
 
@@ -378,14 +357,14 @@ async def test_generate_both_attempts_fail():
         )
 
         with pytest.raises(ValueError, match="2 tentativas"):
-            await generate_agent_config(
+            await generate_onboarding_report(
                 _sample_company_profile(),
                 _sample_interview_responses(),
             )
 
 
 # ---------------------------------------------------------------------------
-# T21: Agent generation endpoint tests
+# Endpoint tests
 # ---------------------------------------------------------------------------
 
 
@@ -415,16 +394,16 @@ def _set_session_interviewed(client: TestClient, session_id: str) -> None:
     db.close()
 
 
-@patch("app.routers.agent.generate_agent_config", new_callable=AsyncMock)
+@patch("app.routers.agent.generate_onboarding_report", new_callable=AsyncMock)
 def test_generate_agent_endpoint(
     mock_generate: AsyncMock,
     client: TestClient,
 ) -> None:
-    """POST generate on interviewed session → 200, agent_config stored, status=generated."""
-    from app.models.schemas import AgentConfig
+    """POST generate on interviewed session → 200, report stored, status=generated."""
+    from app.models.schemas import OnboardingReport
 
-    config = AgentConfig(**_valid_agent_config_dict())
-    mock_generate.return_value = config
+    report = OnboardingReport(**_valid_report_dict())
+    mock_generate.return_value = report
 
     session_id = _create_session(client)
     _set_session_interviewed(client, session_id)
@@ -434,13 +413,13 @@ def test_generate_agent_endpoint(
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "generated"
-    assert data["agent_config"]["company_context"]["name"] == "CollectAI"
+    assert data["onboarding_report"]["company"]["name"] == "CollectAI"
 
-    # GET agent returns stored config
+    # GET agent returns stored report
     resp = client.get(f"/api/v1/sessions/{session_id}/agent")
     assert resp.status_code == 200
-    assert resp.json()["company_context"]["name"] == "CollectAI"
-    assert resp.json()["agent_type"] == "compliant"
+    assert resp.json()["company"]["name"] == "CollectAI"
+    assert resp.json()["communication"]["tone_style"] == "friendly"
 
     # Session status is now "generated"
     resp = client.get(f"/api/v1/sessions/{session_id}")
@@ -475,16 +454,16 @@ def test_get_agent_session_not_found(client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-@patch("app.routers.agent.generate_agent_config", new_callable=AsyncMock)
+@patch("app.routers.agent.generate_onboarding_report", new_callable=AsyncMock)
 def test_regenerate_agent(
     mock_generate: AsyncMock,
     client: TestClient,
 ) -> None:
     """POST generate on already-generated session → succeeds (re-generation)."""
-    from app.models.schemas import AgentConfig
+    from app.models.schemas import OnboardingReport
 
-    config = AgentConfig(**_valid_agent_config_dict())
-    mock_generate.return_value = config
+    report = OnboardingReport(**_valid_report_dict())
+    mock_generate.return_value = report
 
     session_id = _create_session(client)
     _set_session_interviewed(client, session_id)
@@ -500,12 +479,12 @@ def test_regenerate_agent(
 
 
 # ---------------------------------------------------------------------------
-# T22: Agent adjustment endpoint tests
+# Adjustment endpoint tests
 # ---------------------------------------------------------------------------
 
 
 def _set_session_generated(client: TestClient, session_id: str) -> None:
-    """Helper: fast-forward session to 'generated' status with stored agent_config."""
+    """Helper: fast-forward session to 'generated' status with stored report."""
     from app.database import get_db
     from app.main import app
     from app.models.orm import OnboardingSession
@@ -517,112 +496,112 @@ def _set_session_generated(client: TestClient, session_id: str) -> None:
     session.enrichment_data = _sample_company_profile()
     session.interview_responses = _sample_interview_responses()
     session.interview_state = {"phase": "complete"}
-    session.agent_config = _valid_agent_config_dict()
+    session.agent_config = _valid_report_dict()
     db.commit()
     db.close()
 
 
 def test_apply_dotted_path_valid() -> None:
     """Valid dotted paths update nested dict correctly without mutating original."""
-    config = _valid_agent_config_dict()
-    original_style = config["tone"]["style"]
+    report = _valid_report_dict()
+    original_style = report["communication"]["tone_style"]
 
     updated, summary = _apply_dotted_path_adjustments(
-        config,
+        report,
         {
-            "tone.style": "empathetic",
-            "negotiation_policies.discount_policy": "Até 20% para pagamento à vista",
+            "communication.tone_style": "empathetic",
+            "collection_policies.discount_policy": "Até 20% para pagamento à vista",
         },
     )
 
-    assert updated["tone"]["style"] == "empathetic"
-    assert updated["negotiation_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
+    assert updated["communication"]["tone_style"] == "empathetic"
+    assert updated["collection_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
     # Original must not be mutated (deepcopy)
-    assert config["tone"]["style"] == original_style
+    assert report["communication"]["tone_style"] == original_style
     assert len(summary) == 2
 
 
 def test_apply_dotted_path_invalid() -> None:
     """Invalid dotted path raises ValueError."""
-    config = _valid_agent_config_dict()
+    report = _valid_report_dict()
     with pytest.raises(ValueError, match="Caminho inválido"):
-        _apply_dotted_path_adjustments(config, {"nonexistent.field": "x"})
+        _apply_dotted_path_adjustments(report, {"nonexistent.field": "x"})
 
 
-@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+@patch("app.routers.agent.adjust_onboarding_report", new_callable=AsyncMock)
 def test_adjust_tone(
     mock_adjust: AsyncMock,
     client: TestClient,
 ) -> None:
-    """PUT adjust with tone.style change → config returned with new tone."""
-    from app.models.schemas import AgentConfig
+    """PUT adjust with tone_style change → report returned with new tone."""
+    from app.models.schemas import OnboardingReport
 
-    adjusted = _valid_agent_config_dict()
-    adjusted["tone"]["style"] = "empathetic"
+    adjusted = _valid_report_dict()
+    adjusted["communication"]["tone_style"] = "empathetic"
     adjusted["metadata"]["version"] = 2
-    mock_adjust.return_value = AgentConfig(**adjusted)
+    mock_adjust.return_value = OnboardingReport(**adjusted)
 
     session_id = _create_session(client)
     _set_session_generated(client, session_id)
 
     resp = client.put(
         f"/api/v1/sessions/{session_id}/agent/adjust",
-        json={"adjustments": {"tone.style": "empathetic"}},
+        json={"adjustments": {"communication.tone_style": "empathetic"}},
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "adjusted"
-    assert data["agent_config"]["tone"]["style"] == "empathetic"
+    assert data["onboarding_report"]["communication"]["tone_style"] == "empathetic"
 
     mock_adjust.assert_called_once()
 
 
-@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+@patch("app.routers.agent.adjust_onboarding_report", new_callable=AsyncMock)
 def test_adjust_discount_policy(
     mock_adjust: AsyncMock,
     client: TestClient,
 ) -> None:
-    """PUT adjust with discount_policy change → negotiation_policies updated."""
-    from app.models.schemas import AgentConfig
+    """PUT adjust with discount_policy change → collection_policies updated."""
+    from app.models.schemas import OnboardingReport
 
-    adjusted = _valid_agent_config_dict()
-    adjusted["negotiation_policies"]["discount_policy"] = "Até 20% para pagamento à vista"
+    adjusted = _valid_report_dict()
+    adjusted["collection_policies"]["discount_policy"] = "Até 20% para pagamento à vista"
     adjusted["metadata"]["version"] = 2
-    mock_adjust.return_value = AgentConfig(**adjusted)
+    mock_adjust.return_value = OnboardingReport(**adjusted)
 
     session_id = _create_session(client)
     _set_session_generated(client, session_id)
 
     resp = client.put(
         f"/api/v1/sessions/{session_id}/agent/adjust",
-        json={"adjustments": {"negotiation_policies.discount_policy": "Até 20% para pagamento à vista"}},
+        json={"adjustments": {"collection_policies.discount_policy": "Até 20% para pagamento à vista"}},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["agent_config"]["negotiation_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
+    assert data["onboarding_report"]["collection_policies"]["discount_policy"] == "Até 20% para pagamento à vista"
 
 
-@patch("app.routers.agent.adjust_agent_config", new_callable=AsyncMock)
+@patch("app.routers.agent.adjust_onboarding_report", new_callable=AsyncMock)
 def test_adjust_version_incremented(
     mock_adjust: AsyncMock,
     client: TestClient,
 ) -> None:
-    """PUT adjust → version in returned config is 2."""
-    from app.models.schemas import AgentConfig
+    """PUT adjust → version in returned report is 2."""
+    from app.models.schemas import OnboardingReport
 
-    adjusted = _valid_agent_config_dict()
+    adjusted = _valid_report_dict()
     adjusted["metadata"]["version"] = 2
-    mock_adjust.return_value = AgentConfig(**adjusted)
+    mock_adjust.return_value = OnboardingReport(**adjusted)
 
     session_id = _create_session(client)
     _set_session_generated(client, session_id)
 
     resp = client.put(
         f"/api/v1/sessions/{session_id}/agent/adjust",
-        json={"adjustments": {"tone.style": "formal"}},
+        json={"adjustments": {"communication.tone_style": "formal"}},
     )
     assert resp.status_code == 200
-    assert resp.json()["agent_config"]["metadata"]["version"] == 2
+    assert resp.json()["onboarding_report"]["metadata"]["version"] == 2
 
     # GET agent also returns the updated version
     resp = client.get(f"/api/v1/sessions/{session_id}/agent")
@@ -635,7 +614,7 @@ def test_adjust_before_generation(client: TestClient) -> None:
     session_id = _create_session(client)
     resp = client.put(
         f"/api/v1/sessions/{session_id}/agent/adjust",
-        json={"adjustments": {"tone.style": "formal"}},
+        json={"adjustments": {"communication.tone_style": "formal"}},
     )
     assert resp.status_code == 400
     assert "not generated yet" in resp.json()["detail"]
@@ -645,7 +624,7 @@ def test_adjust_session_not_found(client: TestClient) -> None:
     """PUT adjust on nonexistent session → 404."""
     resp = client.put(
         "/api/v1/sessions/nonexistent-id/agent/adjust",
-        json={"adjustments": {"tone.style": "formal"}},
+        json={"adjustments": {"communication.tone_style": "formal"}},
     )
     assert resp.status_code == 404
 

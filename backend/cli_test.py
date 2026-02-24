@@ -104,10 +104,8 @@ def _present_question(question: dict, number: int | None = None) -> str:
     # Header
     if phase == "follow_up":
         label = f"   Aprofundamento sobre {q_id.replace('followup_', '').rsplit('_', 1)[0]}"
-    elif phase == "dynamic":
-        label = "   Pergunta adicional (IA)"
     elif number:
-        label = f"   Pergunta {number}/16"
+        label = f"   Pergunta {number}/7"
     else:
         label = f"   {q_id}"
 
@@ -169,7 +167,7 @@ def main() -> None:
     print(f"   {GREEN}Sessao criada: {session_id}{RESET}")
 
     # ── Step 3: Enrich ───────────────────────────────────────────────────
-    print(f"\n{YELLOW}Analisando o site {website}... (pode levar ~15s){RESET}")
+    print(f"\n{YELLOW}Analisando o site + pesquisa web... (pode levar ~30s){RESET}")
     data = _post(client, f"/api/v1/sessions/{session_id}/enrich")
     enrichment = data["enrichment_data"]
     print(f"   {GREEN}Dados extraidos do site:{RESET}")
@@ -179,9 +177,18 @@ def main() -> None:
         if val:
             print(f"   {DIM}{key}: {val[:120]}{RESET}")
 
+    web_research = enrichment.get("web_research")
+    if web_research:
+        print(f"\n   {GREEN}Pesquisa web adicional:{RESET}")
+        for key in ("company_description", "products_and_services", "sector_context",
+                    "reputation_summary", "collection_relevant_insights"):
+            val = web_research.get(key, "")
+            if val:
+                print(f"   {DIM}{key}: {val[:120]}{RESET}")
+
     # ── Step 4: Interview — core questions ───────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Entrevista — 16 perguntas principais{RESET}")
+    print(f"{BOLD}  Entrevista — 7 perguntas principais{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
 
     data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
@@ -198,10 +205,6 @@ def main() -> None:
         question = data if "question_id" in data else data.get("next_question")
         if question is None:
             break
-        if not question.get("question_id", "").startswith("core_") and question.get("phase") != "follow_up":
-            # Entered dynamic phase
-            break
-
         # Track core question number
         if question.get("question_id", "").startswith("core_"):
             core_count += 1
@@ -224,59 +227,21 @@ def main() -> None:
         else:
             data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
 
-    # ── Step 5: Interview — dynamic questions ────────────────────────────
-    print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Perguntas adicionais geradas pela IA{RESET}")
-    print(f"{BOLD}{'=' * 60}{RESET}")
-    print(f"{DIM}  A IA vai fazer perguntas especificas para seu negocio.{RESET}")
-    print(f"{DIM}  Responda com o maximo de detalhes possivel.{RESET}")
+    print(f"\n   {GREEN}Entrevista concluida! ({core_count} perguntas respondidas){RESET}")
 
-    dynamic_count = 0
-    safety = 0
-
-    while safety < 25:
-        safety += 1
-        if data.get("phase") in ("review", "complete"):
-            break
-
-        question = data if "question_id" in data else data.get("next_question")
-        if question is None:
-            data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
-            if data.get("phase") in ("review", "complete"):
-                break
-            question = data
-            if question.get("question_id") is None:
-                break
-
-        dynamic_count += 1
-        answer = _present_question(question)
-
-        data = _post(
-            client,
-            f"/api/v1/sessions/{session_id}/interview/answer",
-            json={"question_id": question["question_id"], "answer": answer, "source": "text"},
-        )
-
-        next_q = data.get("next_question")
-        if next_q:
-            data = next_q
-        else:
-            data = _get(client, f"/api/v1/sessions/{session_id}/interview/next")
-
-    print(f"\n   {GREEN}Entrevista concluida! ({core_count} perguntas + {dynamic_count} adicionais){RESET}")
-
-    # ── Step 6: Review ──────────────────────────────────────────────────
+    # ── Step 5: Review ──────────────────────────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
     print(f"{BOLD}  Revisao da entrevista{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
 
     review_data = _get(client, f"/api/v1/sessions/{session_id}/interview/review")
-    summary = review_data.get("summary", {})
+    answers = review_data.get("answers", [])
 
     print(f"\n   {BOLD}Resumo das respostas:{RESET}")
-    for key, val in summary.items():
-        if isinstance(val, str) and val:
-            print(f"   {DIM}{key}:{RESET} {val[:120]}")
+    for a in answers:
+        q_text = a.get("question_text", a.get("question_id", "?"))
+        ans = a.get("answer", "")
+        print(f"   {DIM}{q_text}:{RESET} {ans[:120]}")
 
     notes = input(f"\n   {CYAN}Notas adicionais (Enter para pular): {RESET}").strip() or None
 
@@ -286,66 +251,81 @@ def main() -> None:
     _post(client, f"/api/v1/sessions/{session_id}/interview/review", json=confirm_body)
     print(f"\n   {GREEN}Revisao confirmada!{RESET}")
 
-    # ── Step 7: Generate agent ───────────────────────────────────────────
+    # ── Step 6: Generate onboarding report ────────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  Gerando agente de cobranca...{RESET}")
+    print(f"{BOLD}  Gerando relatorio de onboarding...{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
     print(f"{YELLOW}  Isso pode levar ~15 segundos...{RESET}")
 
     data = _post(client, f"/api/v1/sessions/{session_id}/agent/generate")
-    config = data["agent_config"]
+    report = data["onboarding_report"]
 
-    print(f"\n   {GREEN}Agente gerado com sucesso!{RESET}\n")
+    print(f"\n   {GREEN}Relatorio gerado com sucesso!{RESET}\n")
 
-    # System prompt
-    print(f"   {BOLD}System Prompt:{RESET}")
-    print(_wrap(config["system_prompt"], width=78))
+    # Expert Recommendations
+    print(f"   {BOLD}Recomendacoes do Especialista:{RESET}")
+    print(_wrap(report["expert_recommendations"], width=78))
 
-    # Tone
-    tone = config.get("tone", {})
-    print(f"\n   {BOLD}Tom:{RESET} {tone.get('style', '?')}")
-    if tone.get("prohibited_words"):
-        print(f"   {BOLD}Palavras proibidas:{RESET} {', '.join(tone['prohibited_words'])}")
+    # Company
+    company = report.get("company", {})
+    print(f"\n   {BOLD}Empresa:{RESET} {company.get('name', '?')}")
+    print(f"   Segmento: {company.get('segment', '?')}")
+    print(f"   Produtos: {company.get('products', '?')}")
 
-    # Negotiation
-    neg = config.get("negotiation_policies", {})
-    print(f"\n   {BOLD}Negociacao:{RESET}")
+    # Communication
+    comm = report.get("communication", {})
+    print(f"\n   {BOLD}Comunicacao:{RESET} {comm.get('tone_style', '?')}")
+    if comm.get("prohibited_actions"):
+        print(f"   Acoes proibidas: {', '.join(comm['prohibited_actions'])}")
+
+    # Collection Policies
+    pol = report.get("collection_policies", {})
+    print(f"\n   {BOLD}Politicas de Cobranca:{RESET}")
     for pol_key, pol_label in [
         ("discount_policy", "Desconto"),
         ("installment_policy", "Parcelamento"),
         ("interest_policy", "Juros"),
         ("penalty_policy", "Multa"),
     ]:
-        pol_val = neg.get(pol_key, "")
+        pol_val = pol.get(pol_key, "")
         if pol_val:
             print(f"   {pol_label}: {pol_val[:120]}")
-    print(f"   Metodos: {', '.join(neg.get('payment_methods', []))}")
+    if pol.get("payment_methods"):
+        print(f"   Metodos: {', '.join(pol['payment_methods'])}")
+    if pol.get("collection_flow_description"):
+        print(f"   Fluxo: {pol['collection_flow_description'][:120]}")
 
     # Guardrails
-    guard = config.get("guardrails", {})
+    guard = report.get("guardrails", {})
     print(f"\n   {BOLD}Guardrails:{RESET}")
     if guard.get("never_do"):
         for item in guard["never_do"][:5]:
             print(f"   - Nunca: {item}")
-    if guard.get("escalation_triggers"):
-        print(f"   Escalacao: {', '.join(guard['escalation_triggers'][:5])}")
+    if pol.get("escalation_triggers"):
+        print(f"   Escalacao: {', '.join(pol['escalation_triggers'][:5])}")
 
-    # Scenario responses
-    scenarios = config.get("scenario_responses", {})
-    print(f"\n   {BOLD}Respostas para cenarios:{RESET}")
-    for key in ("already_paid", "dont_recognize_debt", "cant_pay_now", "aggressive_debtor"):
-        val = scenarios.get(key, "")
-        label = key.replace("_", " ").title()
-        if val:
-            print(f"   {label}:")
-            print(_wrap(val[:200], width=78, indent="      "))
+    # Collection Profile
+    prof = report.get("collection_profile", {})
+    print(f"\n   {BOLD}Perfil de Cobranca:{RESET}")
+    for prof_key, prof_label in [
+        ("debt_type", "Tipo de divida"),
+        ("typical_debtor_profile", "Perfil do devedor"),
+        ("business_specific_objections", "Objecoes do negocio"),
+    ]:
+        prof_val = prof.get(prof_key, "")
+        if prof_val:
+            print(f"   {prof_label}: {prof_val[:120]}")
 
-    # Tools
-    tools = config.get("tools", [])
-    if tools:
-        print(f"\n   {BOLD}Ferramentas:{RESET} {', '.join(tools)}")
+    # Enrichment Summary
+    enrich = report.get("enrichment_summary", {})
+    if enrich.get("website_analysis") or enrich.get("web_research"):
+        print(f"\n   {BOLD}Resumo de Enriquecimento:{RESET}")
+        if enrich.get("website_analysis"):
+            print(f"   Site: {enrich['website_analysis'][:120]}")
+        if enrich.get("web_research"):
+            print(f"   Pesquisa: {enrich['web_research'][:120]}")
 
-    # ── Step 8: Generate simulation ──────────────────────────────────────
+    # ── Step 7: Generate simulation ──────────────────────────────────────
     print(f"\n{BOLD}{'=' * 60}{RESET}")
     print(f"{BOLD}  Gerando simulacao de conversas...{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")

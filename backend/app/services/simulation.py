@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from openai import AsyncOpenAI, OpenAIError
 
 from app.config import settings
-from app.models.schemas import AgentConfig, SimulationResult
+from app.models.schemas import OnboardingReport, SimulationResult
 from app.prompts.simulation import SYSTEM_PROMPT, build_simulation_prompt
 
 logger = logging.getLogger(__name__)
@@ -49,13 +49,13 @@ def _apply_sanity_checks(data: dict) -> list[str]:
 
 
 async def generate_simulation(
-    agent_config: AgentConfig,
+    report: OnboardingReport,
     session_id: str = "",
 ) -> SimulationResult:
-    """Generate 2 simulated collection conversations from an AgentConfig.
+    """Generate 2 simulated collection conversations from an OnboardingReport.
 
     Args:
-        agent_config: The complete agent configuration to simulate.
+        report: The complete onboarding report to simulate.
         session_id: Onboarding session ID for metadata.
 
     Returns:
@@ -65,7 +65,7 @@ async def generate_simulation(
         ValueError: If LLM fails after 2 attempts or output is invalid.
     """
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    user_message = build_simulation_prompt(agent_config)
+    user_message = build_simulation_prompt(report)
 
     for attempt in range(2):
         try:

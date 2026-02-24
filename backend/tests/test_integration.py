@@ -179,31 +179,29 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert data["confirmed"] is True
     assert data["phase"] == "complete"
 
-    # ── Step 8: Generate agent config ────────────────────────────────────
+    # ── Step 8: Generate onboarding report ────────────────────────────────
     resp = client.post(f"/api/v1/sessions/{session_id}/agent/generate")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "generated"
-    agent_config = data["agent_config"]
-    assert len(agent_config["system_prompt"]) >= 200
-    assert agent_config["company_context"]["name"]
-    assert agent_config["tone"]["style"] in (
+    report = data["onboarding_report"]
+    assert len(report["expert_recommendations"]) >= 200
+    assert report["company"]["name"]
+    assert report["communication"]["tone_style"] in (
         "formal", "friendly", "empathetic", "assertive",
     )
 
-    # ── Step 9: Verify agent config via GET ──────────────────────────────
+    # ── Step 9: Verify report via GET ────────────────────────────────────
     resp = client.get(f"/api/v1/sessions/{session_id}/agent")
     assert resp.status_code == 200
     stored = resp.json()
-    assert stored["agent_type"] in ("compliant", "non_compliant")
-    assert len(stored["negotiation_policies"]["payment_methods"]) > 0
-    assert len(stored["negotiation_policies"]["discount_policy"]) > 0
-    assert len(stored["negotiation_policies"]["installment_policy"]) > 0
+    assert len(stored["expert_recommendations"]) >= 200
+    assert len(stored["collection_policies"]["payment_methods"]) > 0
+    assert len(stored["collection_policies"]["discount_policy"]) > 0
+    assert len(stored["collection_policies"]["installment_policy"]) > 0
     assert len(stored["guardrails"]["never_do"]) > 0
     assert len(stored["guardrails"]["never_say"]) > 0
-    assert len(stored["scenario_responses"]["already_paid"]) > 0
-    assert len(stored["tools"]) > 0
-    assert stored["metadata"]["onboarding_session_id"] == session_id
+    assert stored["metadata"]["session_id"] == session_id
 
     # ── Step 10: Generate simulation ─────────────────────────────────────
     resp = client.post(f"/api/v1/sessions/{session_id}/simulation/generate")

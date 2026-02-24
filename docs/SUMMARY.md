@@ -4,14 +4,14 @@
 
 ## Current State
 
-- **Completed**: M0-M5.9 (T01-T34) — 123 tests passing
+- **Completed**: M0-M5.9 (T01-T34.1) — 122 tests passing
 - **Next task**: T35 (M6) — CORS configuration
 - **After that**: T36-T37 (M6 Deploy), T38-T44 (M7 Frontend), T45 (M8 Directus)
 
 ## Architecture (10-line summary)
 
 - **Stack**: FastAPI + SQLite + OpenAI GPT-4.1-mini + LangGraph + Playwright + uv
-- **Flow**: Create session → Enrich (scrape + web research) → Interview (7 core + follow-ups + review) → Generate agent config → Simulate 2 conversations
+- **Flow**: Create session → Enrich (scrape + web research) → Interview (7 core + follow-ups + review) → Generate OnboardingReport (SOP) → Simulate 2 conversations
 - **Interview**: 7 core questions (1 text process + 4 select sim/não policies + 2 text optional). No dynamic questions, no enrichment pre-fill.
 - **Follow-ups**: core_1 (process) → LLM-evaluated max 1; core_2-5 (policies) → deterministic on "sim"; core_0/core_6 → none
 - **Defaults**: Escalation triggers, guardrails, and tone are hardcoded defaults (previously collected via core_7/core_8/core_4)

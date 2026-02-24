@@ -1,4 +1,4 @@
-"""Tests for simulation prompt + service (T23) and endpoints (T24)."""
+"""Tests for simulation prompt, service, and endpoints."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,88 +8,73 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.models.schemas import (
-    AgentConfig,
-    AgentMetadata,
-    CompanyContext,
-    Guardrails,
-    NegotiationPolicies,
-    ScenarioResponses,
+    OnboardingReport,
     SimulationMessage,
     SimulationMetrics,
     SimulationResult,
     SimulationScenario,
-    ToneConfig,
 )
 from app.prompts.simulation import build_simulation_prompt
 from app.services.simulation import generate_simulation
 
 
-def _valid_agent_config() -> AgentConfig:
-    """Build a complete, valid AgentConfig for testing."""
-    return AgentConfig(
-        agent_type="compliant",
-        company_context=CompanyContext(
-            name="CollectAI",
-            segment="Cobrança digital",
-            products="Agente de cobrança automatizado via WhatsApp",
-            target_audience="Empresas de médio porte com carteira de inadimplentes",
+def _valid_report() -> OnboardingReport:
+    """Build a complete, valid OnboardingReport for testing."""
+    return OnboardingReport(
+        agent_identity={"name": "Sofia"},
+        company={
+            "name": "CollectAI",
+            "segment": "Cobrança digital",
+            "products": "Agente de cobrança automatizado via WhatsApp",
+            "target_audience": "Empresas de médio porte com carteira de inadimplentes",
+        },
+        enrichment_summary={
+            "website_analysis": "Empresa de tecnologia focada em cobrança digital.",
+            "web_research": "Líder em automação de cobrança no Brasil.",
+        },
+        collection_profile={
+            "debt_type": "Inadimplência B2B",
+            "typical_debtor_profile": "Empresas com atraso de 30-90 dias",
+            "business_specific_objections": "Contestação de valores",
+            "payment_verification_process": "Integração bancária",
+            "sector_regulations": "CDC, LGPD",
+        },
+        collection_policies={
+            "overdue_definition": "A partir de 5 dias após vencimento",
+            "discount_policy": "Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
+            "installment_policy": "Parcelamento em até 12x, parcela mínima de R$50",
+            "interest_policy": "Juros de 1% ao mês sobre o valor total",
+            "penalty_policy": "Multa de 2% sobre o valor da parcela vencida",
+            "payment_methods": ["pix", "boleto"],
+            "escalation_triggers": ["solicita_humano", "divida_alta", "agressivo"],
+            "escalation_custom_rules": "",
+            "collection_flow_description": "D+5 WhatsApp, D+15 ligação, D+60 jurídico",
+        },
+        communication={
+            "tone_style": "empathetic",
+            "prohibited_actions": ["Ameaçar o devedor", "Cobrar fora do horário"],
+            "brand_specific_language": "",
+        },
+        guardrails={
+            "never_do": ["Ameaçar o devedor", "Compartilhar dados com terceiros"],
+            "never_say": ["processo", "SPC", "Serasa", "nome sujo"],
+            "must_identify_as_ai": True,
+            "follow_up_interval_days": 3,
+            "max_attempts_before_stop": 10,
+        },
+        expert_recommendations=(
+            "A CollectAI atua no segmento de cobrança digital B2B. Recomenda-se adotar "
+            "um tom empático mas firme, priorizando resolução amigável. O fluxo de cobrança "
+            "deve começar com WhatsApp no D+5, ligação no D+15 e jurídico no D+60. "
+            "Respeitar CDC e LGPD. Principais objeções: contestação de valores e alegação "
+            "de não recebimento. Processos de verificação via integração bancária são essenciais."
         ),
-        system_prompt=(
-            "Você é um agente de cobrança digital da CollectAI. "
-            "Sua função é negociar dívidas de forma empática e eficiente, "
-            "respeitando os limites de desconto e parcelamento configurados. "
-            "Sempre se identifique como assistente virtual. "
-            "Nunca ameace o devedor ou use linguagem agressiva. "
-            "Ofereça opções de pagamento via PIX ou boleto. "
-            "Se o devedor ficar agressivo, encerre a conversa educadamente. "
-            "Horário de contato: segunda a sexta 08:00-20:00, sábado 08:00-14:00."
-        ),
-        tone=ToneConfig(
-            style="empathetic",
-            use_first_name=True,
-            prohibited_words=["dívida", "devedor", "inadimplente"],
-            preferred_words=["pendência", "valor em aberto", "regularização"],
-            opening_message_template=(
-                "Olá {first_name}, aqui é a assistente virtual da CollectAI. "
-                "Gostaria de conversar sobre uma pendência financeira."
-            ),
-        ),
-        negotiation_policies=NegotiationPolicies(
-            discount_policy="Até 10% de desconto para pagamento à vista, apenas quando o devedor resiste",
-            installment_policy="Parcelamento em até 12x, parcela mínima de R$50",
-            interest_policy="Juros de 1% ao mês sobre o valor total",
-            penalty_policy="Multa de 2% sobre o valor da parcela vencida",
-            payment_methods=["pix", "boleto"],
-            can_generate_payment_link=True,
-        ),
-        guardrails=Guardrails(
-            never_do=[
-                "Ameaçar o devedor",
-                "Compartilhar dados com terceiros",
-            ],
-            never_say=["processo", "SPC", "Serasa", "nome sujo"],
-            escalation_triggers=[
-                "solicita_humano",
-                "divida_alta",
-                "agressivo",
-            ],
-            follow_up_interval_days=3,
-            max_attempts_before_stop=10,
-            must_identify_as_ai=True,
-        ),
-        scenario_responses=ScenarioResponses(
-            already_paid="Peço desculpas. Pode enviar o comprovante?",
-            dont_recognize_debt="Entendo. Vou encaminhar para verificação.",
-            cant_pay_now="Podemos encontrar uma opção de parcelamento.",
-            aggressive_debtor="Entendo sua frustração. Vou encerrar por aqui.",
-        ),
-        tools=["send_whatsapp_message", "generate_pix_payment_link", "generate_boleto"],
-        metadata=AgentMetadata(
-            version=1,
-            generated_at="2026-02-20T12:00:00Z",
-            onboarding_session_id="test-session-123",
-            generation_model="gpt-4.1-mini",
-        ),
+        metadata={
+            "generated_at": "2026-02-20T12:00:00Z",
+            "session_id": "test-session-123",
+            "model": "gpt-4.1-mini",
+            "version": 1,
+        },
     )
 
 
@@ -150,8 +135,8 @@ def _mock_simulation_response() -> dict:
 
 def test_build_simulation_prompt():
     """Prompt should include company name, tone, policy descriptions, guardrails, and schema."""
-    config = _valid_agent_config()
-    prompt = build_simulation_prompt(config)
+    report = _valid_report()
+    prompt = build_simulation_prompt(report)
 
     assert "CollectAI" in prompt
     assert "empathetic" in prompt
@@ -164,8 +149,8 @@ def test_build_simulation_prompt():
 
 def test_prompt_includes_scenario_instructions():
     """Prompt should include instructions for both cooperative and resistant scenarios."""
-    config = _valid_agent_config()
-    prompt = build_simulation_prompt(config)
+    report = _valid_report()
+    prompt = build_simulation_prompt(report)
 
     assert "Cooperativo" in prompt
     assert "Resistente" in prompt
@@ -203,7 +188,7 @@ def test_simulation_schema_invalid_resolution():
 @pytest.mark.asyncio
 async def test_generate_simulation():
     """Mock LLM returns valid JSON → SimulationResult with 2 scenarios and metadata."""
-    config = _valid_agent_config()
+    report = _valid_report()
     mock_data = _mock_simulation_response()
 
     mock_response = MagicMock()
@@ -215,7 +200,7 @@ async def test_generate_simulation():
         mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
         mock_openai.return_value = mock_client
 
-        result = await generate_simulation(config, session_id="sess-123")
+        result = await generate_simulation(report, session_id="sess-123")
 
     assert isinstance(result, SimulationResult)
     assert len(result.scenarios) == 2
@@ -229,7 +214,7 @@ async def test_generate_simulation():
 @pytest.mark.asyncio
 async def test_generate_retries_on_failure():
     """First call fails, second succeeds → returns valid result."""
-    config = _valid_agent_config()
+    report = _valid_report()
     mock_data = _mock_simulation_response()
 
     mock_response = MagicMock()
@@ -243,7 +228,7 @@ async def test_generate_retries_on_failure():
         )
         mock_openai.return_value = mock_client
 
-        result = await generate_simulation(config)
+        result = await generate_simulation(report)
 
     assert isinstance(result, SimulationResult)
     assert len(result.scenarios) == 2
@@ -253,7 +238,7 @@ async def test_generate_retries_on_failure():
 @pytest.mark.asyncio
 async def test_generate_both_attempts_fail():
     """Both OpenAI calls fail → raises ValueError."""
-    config = _valid_agent_config()
+    report = _valid_report()
 
     with patch("app.services.simulation.AsyncOpenAI") as mock_openai:
         mock_client = AsyncMock()
@@ -263,11 +248,11 @@ async def test_generate_both_attempts_fail():
         mock_openai.return_value = mock_client
 
         with pytest.raises(ValueError, match="2 tentativas"):
-            await generate_simulation(config)
+            await generate_simulation(report)
 
 
 # ---------------------------------------------------------------------------
-# T24: Simulation endpoint tests
+# Simulation endpoint tests
 # ---------------------------------------------------------------------------
 
 
@@ -281,7 +266,7 @@ def _create_session(client: TestClient) -> str:
 
 
 def _set_session_generated(client: TestClient, session_id: str) -> None:
-    """Helper: fast-forward session to 'generated' status with stored agent_config."""
+    """Helper: fast-forward session to 'generated' status with stored report."""
     from app.database import get_db
     from app.main import app
     from app.models.orm import OnboardingSession
@@ -290,7 +275,7 @@ def _set_session_generated(client: TestClient, session_id: str) -> None:
     db = next(db_gen)
     session = db.get(OnboardingSession, session_id)
     session.status = "generated"
-    session.agent_config = _valid_agent_config().model_dump()
+    session.agent_config = _valid_report().model_dump()
     db.commit()
     db.close()
 

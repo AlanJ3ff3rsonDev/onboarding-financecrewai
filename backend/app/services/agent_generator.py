@@ -1,4 +1,4 @@
-"""Agent config generation via LLM."""
+"""Onboarding report generation via LLM."""
 
 import copy
 import json
@@ -9,7 +9,7 @@ from typing import Any
 from openai import AsyncOpenAI, OpenAIError
 
 from app.config import settings
-from app.models.schemas import AgentConfig
+from app.models.schemas import OnboardingReport
 from app.prompts.agent_generator import (
     ADJUSTMENT_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
@@ -27,21 +27,21 @@ def _apply_sanity_checks(
     """Validate and auto-correct LLM output. Returns list of corrections made."""
     corrections: list[str] = []
 
-    # --- System prompt quality ---
-    system_prompt = data.get("system_prompt", "")
-    if not system_prompt or len(system_prompt) < 200:
+    # --- Expert recommendations quality ---
+    expert_recs = data.get("expert_recommendations", "")
+    if not expert_recs or len(expert_recs) < 200:
         raise ValueError(
-            f"LLM gerou system_prompt com apenas {len(system_prompt)} caracteres "
+            f"LLM gerou expert_recommendations com apenas {len(expert_recs)} caracteres "
             f"(mínimo: 200). Geração inválida."
         )
 
-    # Warn if company name not in system_prompt
+    # Warn if company name not in expert_recommendations
     company_name = ""
-    if isinstance(data.get("company_context"), dict):
-        company_name = data["company_context"].get("name", "")
-    if company_name and company_name.lower() not in system_prompt.lower():
+    if isinstance(data.get("company"), dict):
+        company_name = data["company"].get("name", "")
+    if company_name and company_name.lower() not in expert_recs.lower():
         logger.warning(
-            "system_prompt não menciona o nome da empresa '%s'", company_name
+            "expert_recommendations não menciona o nome da empresa '%s'", company_name
         )
 
     # --- Guardrails bounds ---
@@ -69,12 +69,12 @@ def _apply_sanity_checks(
     return corrections
 
 
-async def generate_agent_config(
+async def generate_onboarding_report(
     company_profile: dict | None,
     interview_responses: list[dict],
     session_id: str = "",
-) -> AgentConfig:
-    """Generate a complete AgentConfig by calling GPT-4.1-mini.
+) -> OnboardingReport:
+    """Generate a complete OnboardingReport by calling GPT-4.1-mini.
 
     Args:
         company_profile: CompanyProfile dict from enrichment (or None).
@@ -82,7 +82,7 @@ async def generate_agent_config(
         session_id: Onboarding session ID for metadata.
 
     Returns:
-        Validated AgentConfig instance.
+        Validated OnboardingReport instance.
 
     Raises:
         ValueError: If LLM fails after 2 attempts or output fails sanity checks.
@@ -107,28 +107,28 @@ async def generate_agent_config(
             if "metadata" not in data or not isinstance(data["metadata"], dict):
                 data["metadata"] = {}
             data["metadata"]["generated_at"] = datetime.now(timezone.utc).isoformat()
-            data["metadata"]["onboarding_session_id"] = session_id
-            data["metadata"]["generation_model"] = "gpt-4.1-mini"
+            data["metadata"]["session_id"] = session_id
+            data["metadata"]["model"] = "gpt-4.1-mini"
 
             # Sanity checks (may raise ValueError for fatal issues)
             corrections = _apply_sanity_checks(data, interview_responses)
             if corrections:
                 logger.info(
-                    "Applied %d sanity corrections to agent config", len(corrections)
+                    "Applied %d sanity corrections to onboarding report", len(corrections)
                 )
 
-            return AgentConfig(**data)
+            return OnboardingReport(**data)
 
         except ValueError:
             raise
         except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
             logger.warning(
-                "Agent generation attempt %d failed: %s", attempt + 1, exc
+                "Report generation attempt %d failed: %s", attempt + 1, exc
             )
             if attempt == 0:
                 continue
             raise ValueError(
-                "Falha na geração do agente após 2 tentativas."
+                "Falha na geração do relatório após 2 tentativas."
             ) from exc
 
 
@@ -139,8 +139,8 @@ def _apply_dotted_path_adjustments(
     """Apply dotted-path adjustments to a nested config dict.
 
     Args:
-        config_dict: The original AgentConfig as a dict.
-        adjustments: Flat dict like {"tone.style": "empathetic", ...}.
+        config_dict: The original report as a dict.
+        adjustments: Flat dict like {"communication.tone_style": "empathetic", ...}.
 
     Returns:
         (updated_dict, summary_lines) where summary_lines describes each change.
@@ -176,27 +176,27 @@ def _apply_dotted_path_adjustments(
     return result, summary_lines
 
 
-async def adjust_agent_config(
-    current_config: dict,
+async def adjust_onboarding_report(
+    current_report: dict,
     adjustments: dict[str, Any],
     session_id: str = "",
-) -> AgentConfig:
-    """Apply user adjustments to an existing config and regenerate text fields.
+) -> OnboardingReport:
+    """Apply user adjustments to an existing report and regenerate expert_recommendations.
 
     Args:
-        current_config: The current agent_config dict from the DB.
+        current_report: The current report dict from the DB.
         adjustments: Flat dotted-path dict of changes to apply.
         session_id: Session ID for metadata.
 
     Returns:
-        Updated and validated AgentConfig with incremented version.
+        Updated and validated OnboardingReport with incremented version.
 
     Raises:
         ValueError: If paths are invalid, LLM fails, or validation fails.
     """
     # Step 1: Apply structural adjustments
     adjusted_dict, summary_lines = _apply_dotted_path_adjustments(
-        current_config, adjustments
+        current_report, adjustments
     )
     adjustments_summary = "\n".join(summary_lines)
 
@@ -207,7 +207,7 @@ async def adjust_agent_config(
     )
     adjusted_dict["metadata"]["generated_at"] = datetime.now(timezone.utc).isoformat()
 
-    # Step 3: Regenerate system_prompt + scenario_responses via LLM
+    # Step 3: Regenerate expert_recommendations via LLM
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
     user_message = build_adjustment_prompt(adjusted_dict, adjustments_summary)
 
@@ -224,8 +224,7 @@ async def adjust_agent_config(
             )
             regen_data = json.loads(response.choices[0].message.content)
 
-            adjusted_dict["system_prompt"] = regen_data["system_prompt"]
-            adjusted_dict["scenario_responses"] = regen_data["scenario_responses"]
+            adjusted_dict["expert_recommendations"] = regen_data["expert_recommendations"]
 
             break
 
@@ -238,8 +237,8 @@ async def adjust_agent_config(
             if attempt == 0:
                 continue
             raise ValueError(
-                "Falha na regeneração do agente após 2 tentativas."
+                "Falha na regeneração do relatório após 2 tentativas."
             ) from exc
 
     # Step 4: Validate final result via Pydantic
-    return AgentConfig(**adjusted_dict)
+    return OnboardingReport(**adjusted_dict)

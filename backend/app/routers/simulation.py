@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.orm import OnboardingSession
-from app.models.schemas import AgentConfig, SimulationResult
+from app.models.schemas import OnboardingReport, SimulationResult
 from app.services.simulation import generate_simulation
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["simulation"])
@@ -36,8 +36,8 @@ async def generate_simulation_endpoint(
     db.commit()
 
     try:
-        agent_config = AgentConfig(**session.agent_config)
-        result = await generate_simulation(agent_config, session_id=session_id)
+        report = OnboardingReport(**session.agent_config)
+        result = await generate_simulation(report, session_id=session_id)
     except ValueError as exc:
         session.status = "generated"
         db.commit()

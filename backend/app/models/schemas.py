@@ -102,66 +102,77 @@ class CreateSessionResponse(BaseModel):
     status: str
 
 
-# --- AgentConfig schemas (T18) ---
+# --- OnboardingReport schemas (replaces AgentConfig) ---
 
 
-class CompanyContext(BaseModel):
+class AgentIdentity(BaseModel):
+    name: str = ""
+
+
+class ReportCompany(BaseModel):
     name: str
-    segment: str
-    products: str
-    target_audience: str
+    segment: str = ""
+    products: str = ""
+    target_audience: str = ""
+    website: str = ""
 
 
-class ToneConfig(BaseModel):
-    style: Literal["formal", "friendly", "empathetic", "assertive"]
-    use_first_name: bool
-    prohibited_words: list[str] = Field(default_factory=list)
-    preferred_words: list[str] = Field(default_factory=list)
-    opening_message_template: str
+class EnrichmentSummary(BaseModel):
+    website_analysis: str = ""
+    web_research: str = ""
 
 
-class NegotiationPolicies(BaseModel):
-    discount_policy: str
-    installment_policy: str
-    interest_policy: str
-    penalty_policy: str
-    payment_methods: list[str]
-    can_generate_payment_link: bool
+class CollectionProfile(BaseModel):
+    debt_type: str = ""
+    typical_debtor_profile: str = ""
+    business_specific_objections: str = ""
+    payment_verification_process: str = ""
+    sector_regulations: str = ""
 
 
-class Guardrails(BaseModel):
-    never_do: list[str]
-    never_say: list[str]
-    escalation_triggers: list[str]
+class CollectionPolicies(BaseModel):
+    overdue_definition: str = ""
+    discount_policy: str = ""
+    installment_policy: str = ""
+    interest_policy: str = ""
+    penalty_policy: str = ""
+    payment_methods: list[str] = Field(default_factory=list)
+    escalation_triggers: list[str] = Field(default_factory=list)
+    escalation_custom_rules: str = ""
+    collection_flow_description: str = ""
+
+
+class Communication(BaseModel):
+    tone_style: Literal["formal", "friendly", "empathetic", "assertive"] = "friendly"
+    prohibited_actions: list[str] = Field(default_factory=list)
+    brand_specific_language: str = ""
+
+
+class ReportGuardrails(BaseModel):
+    never_do: list[str] = Field(default_factory=list)
+    never_say: list[str] = Field(default_factory=list)
+    must_identify_as_ai: bool = True
     follow_up_interval_days: int = Field(default=3, ge=1)
     max_attempts_before_stop: int = Field(default=10, ge=1)
-    must_identify_as_ai: bool = True
 
 
-class ScenarioResponses(BaseModel):
-    already_paid: str
-    dont_recognize_debt: str
-    cant_pay_now: str
-    aggressive_debtor: str
-
-
-class AgentMetadata(BaseModel):
+class ReportMetadata(BaseModel):
+    generated_at: str = ""
+    session_id: str = ""
+    model: str = "gpt-4.1-mini"
     version: int = Field(default=1, ge=1)
-    generated_at: str
-    onboarding_session_id: str
-    generation_model: str = "gpt-4.1-mini"
 
 
-class AgentConfig(BaseModel):
-    agent_type: Literal["compliant", "non_compliant"]
-    company_context: CompanyContext
-    system_prompt: str = Field(..., min_length=200)
-    tone: ToneConfig
-    negotiation_policies: NegotiationPolicies
-    guardrails: Guardrails
-    scenario_responses: ScenarioResponses
-    tools: list[str]
-    metadata: AgentMetadata
+class OnboardingReport(BaseModel):
+    agent_identity: AgentIdentity = Field(default_factory=AgentIdentity)
+    company: ReportCompany
+    enrichment_summary: EnrichmentSummary = Field(default_factory=EnrichmentSummary)
+    collection_profile: CollectionProfile = Field(default_factory=CollectionProfile)
+    collection_policies: CollectionPolicies = Field(default_factory=CollectionPolicies)
+    communication: Communication = Field(default_factory=Communication)
+    guardrails: ReportGuardrails = Field(default_factory=ReportGuardrails)
+    expert_recommendations: str = Field(..., min_length=200)
+    metadata: ReportMetadata = Field(default_factory=ReportMetadata)
 
 
 # --- SimulationResult schemas (T23) ---
@@ -200,7 +211,7 @@ class AgentAdjustRequest(BaseModel):
         min_length=1,
         description=(
             "Flat dict of dotted-path keys to new values. "
-            "Example: {'tone.style': 'empathetic', "
-            "'negotiation_policies.discount_policy': 'Até 20% para pagamento à vista'}"
+            "Example: {'communication.tone_style': 'empathetic', "
+            "'collection_policies.discount_policy': 'Até 20% para pagamento à vista'}"
         ),
     )
