@@ -168,13 +168,15 @@ def _build_company_section(company_profile: dict | None) -> str:
 def _format_policy_answer(responses: list[dict], question_id: str, policy_name: str) -> str:
     """Format a yes/no policy answer with its follow-up detail."""
     answer = _get_answer_by_id(responses, question_id)
+    answer_normalized = answer.strip().lower()
     followups = _get_followups(responses, question_id)
-    if answer.strip().lower() == "sim" and followups:
-        detail = followups[0].get("answer", "Sem detalhes")
-        return f"- {policy_name}: Sim — {detail}"
-    elif answer.strip().lower() == "sim":
+
+    if answer_normalized == "sim":
+        if followups:
+            detail = followups[0].get("answer", "Sem detalhes")
+            return f"- {policy_name}: Sim — {detail}"
         return f"- {policy_name}: Sim (sem detalhes fornecidos)"
-    elif answer.strip().lower() == "nao":
+    if answer_normalized == "nao":
         return f"- {policy_name}: Não"
     return f"- {policy_name}: {answer}"
 
@@ -204,7 +206,7 @@ def build_prompt(
     # Section 0: Agent Identity (conditional — only if client named the agent)
     agent_name = _get_answer_by_id(interview_responses, "core_0")
     skip_names = {"nao", "não", "passo", "n", "nao respondida", "não respondida"}
-    if agent_name.strip().lower() not in skip_names:
+    if agent_name.strip() and agent_name.strip().lower() not in skip_names:
         sections.append(
             f"## 0. Identidade do Agente\n"
             f"- Nome escolhido para o agente: {agent_name}"
@@ -263,7 +265,7 @@ def build_prompt(
     # Add client-specified escalation triggers if provided
     core_6_answer = _get_answer_by_id(interview_responses, "core_6")
     skip_answers = {"nao", "não", "nao respondida", "não respondida", "n", "passo"}
-    if core_6_answer.strip().lower() not in skip_answers:
+    if core_6_answer.strip() and core_6_answer.strip().lower() not in skip_answers:
         s6_lines.append(f"- Situação adicional indicada pelo cliente: {core_6_answer}")
     s6_lines.append("\n### O que o agente NUNCA deve fazer (padrão)")
     for guardrail in DEFAULT_GUARDRAILS:

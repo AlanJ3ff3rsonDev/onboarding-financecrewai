@@ -5,7 +5,7 @@ import logging
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
-from openai import AsyncOpenAI, OpenAIError
+from openai import AsyncOpenAI
 
 from app.config import settings
 from app.models.schemas import InterviewQuestion
@@ -143,6 +143,11 @@ def deserialize_state(data: dict) -> InterviewState:
     )
 
 
+def _update_state(state: InterviewState, **overrides) -> InterviewState:
+    """Return a new InterviewState with the given fields overridden."""
+    return InterviewState(**{**dict(state), **overrides})
+
+
 # ---------- Follow-up evaluation ----------
 
 
@@ -150,47 +155,10 @@ def _build_answers_context(answers: list[dict]) -> str:
     """Format previous answers as bullet list for LLM context."""
     if not answers:
         return "Nenhuma resposta anterior."
-    lines = []
-    for a in answers:
-        lines.append(f"- {a.get('question_text', a.get('question_id', '?'))}: {a.get('answer', '')}")
-    return "\n".join(lines)
-
-
-def _build_enrichment_context(enrichment_data: dict) -> str:
-    """Format enrichment data as readable text for LLM context."""
-    if not enrichment_data:
-        return "Nenhum dado de enriquecimento disponível."
-    field_labels = {
-        "company_name": "Empresa",
-        "segment": "Segmento",
-        "products_description": "Produtos/Serviços",
-        "target_audience": "Público-alvo",
-        "communication_tone": "Tom de comunicação",
-        "payment_methods_mentioned": "Métodos de pagamento",
-        "collection_relevant_context": "Contexto de cobrança",
-    }
-    lines = []
-    for field, label in field_labels.items():
-        value = enrichment_data.get(field, "")
-        if value and isinstance(value, str) and value.strip():
-            lines.append(f"- {label}: {value.strip()}")
-
-    # Append web research data if available
-    web_research = enrichment_data.get("web_research")
-    if web_research and isinstance(web_research, dict):
-        wr_labels = {
-            "company_description": "Descrição (pesquisa web)",
-            "products_and_services": "Produtos/Serviços (pesquisa web)",
-            "sector_context": "Contexto do setor",
-            "reputation_summary": "Reputação online",
-            "collection_relevant_insights": "Insights para cobrança",
-        }
-        for field, label in wr_labels.items():
-            value = web_research.get(field, "")
-            if value and isinstance(value, str) and value.strip():
-                lines.append(f"- {label}: {value.strip()}")
-
-    return "\n".join(lines) if lines else "Nenhum dado de enriquecimento disponível."
+    return "\n".join(
+        f"- {a.get('question_text', a.get('question_id', '?'))}: {a.get('answer', '')}"
+        for a in answers
+    )
 
 
 def _get_parent_question_id(question_id: str) -> str:
@@ -266,7 +234,7 @@ async def evaluate_and_maybe_follow_up(
             temperature=0.3,
         )
         data = json.loads(response.choices[0].message.content)
-    except (OpenAIError, json.JSONDecodeError, KeyError, Exception) as exc:
+    except Exception as exc:
         logger.warning("Follow-up evaluation failed: %s", exc)
         return False, None
 
@@ -385,17 +353,7 @@ async def submit_answer(
         "question_text": current.get("question_text", ""),
     })
 
-    # Update state with the answer before advancing
-    updated_state = InterviewState(
-        enrichment_data=state["enrichment_data"],
-        core_questions_remaining=state["core_questions_remaining"],
-        current_question=state["current_question"],
-        answers=answers,
-        phase=state["phase"],
-        needs_follow_up=state["needs_follow_up"],
-        follow_up_question=state["follow_up_question"],
-        follow_up_count=state.get("follow_up_count", 0),
-    )
+    updated_state = _update_state(state, answers=answers)
 
     # Determine follow-up logic based on question type
     is_optional_question = current.get("is_required") is False and current.get("phase") == "core"
@@ -404,79 +362,45 @@ async def submit_answer(
         question_id.startswith(f"followup_{pid}_") for pid in POLICY_FOLLOWUP_MAP
     )
 
-    # Policy questions (core_2-5): deterministic follow-up
-    if is_policy_question:
-        answer_lower = answer.strip().lower()
-        if answer_lower == "sim":
-            fu_question = _build_policy_followup(question_id)
-            if fu_question:
-                updated_state = InterviewState(
-                    **{**dict(updated_state),
-                       "current_question": fu_question,
-                       "follow_up_count": 1,
-                       "needs_follow_up": True,
-                       "follow_up_question": fu_question,
-                       }
-                )
-                question = InterviewQuestion.model_validate(fu_question)
-                return question, updated_state
-        # "nao" or anything else → no follow-up, advance
-        updated_state = InterviewState(
-            **{**dict(updated_state),
-               "follow_up_count": 0,
-               "needs_follow_up": False,
-               "follow_up_question": None,
-               }
-        )
-        return await get_next_question(updated_state)
+    # Policy questions (core_2-5): deterministic follow-up when answered "sim"
+    if is_policy_question and answer.strip().lower() == "sim":
+        fu_question = _build_policy_followup(question_id)
+        if fu_question:
+            updated_state = _update_state(
+                updated_state,
+                current_question=fu_question,
+                follow_up_count=1,
+                needs_follow_up=True,
+                follow_up_question=fu_question,
+            )
+            return InterviewQuestion.model_validate(fu_question), updated_state
 
-    # Policy follow-up answers (e.g. followup_core_2_1) → no further follow-up, advance
-    if is_policy_followup:
-        updated_state = InterviewState(
-            **{**dict(updated_state),
-               "follow_up_count": 0,
-               "needs_follow_up": False,
-               "follow_up_question": None,
-               }
-        )
-        return await get_next_question(updated_state)
+    # Skip follow-up evaluation for: policy questions answered "nao", policy
+    # follow-up answers, and optional questions (core_0, core_6)
+    skip_follow_up = is_policy_question or is_policy_followup or is_optional_question
 
-    # Optional questions (core_0, core_6) → no follow-up
-    if is_optional_question:
-        updated_state = InterviewState(
-            **{**dict(updated_state),
-               "follow_up_count": 0,
-               "needs_follow_up": False,
-               "follow_up_question": None,
-               }
+    if not skip_follow_up:
+        # Text questions (core_1) -- LLM-evaluated follow-up (max 1)
+        needs_fu, fu_question = await evaluate_and_maybe_follow_up(
+            updated_state, question_id, answer,
         )
-        return await get_next_question(updated_state)
+        if needs_fu and fu_question:
+            updated_state = _update_state(
+                updated_state,
+                current_question=fu_question,
+                follow_up_count=updated_state.get("follow_up_count", 0) + 1,
+                needs_follow_up=True,
+                follow_up_question=fu_question,
+            )
+            return InterviewQuestion.model_validate(fu_question), updated_state
 
-    # Text questions (core_1) → LLM-evaluated follow-up (max 1)
-    needs_fu, fu_question = await evaluate_and_maybe_follow_up(
-        updated_state, question_id, answer,
+    # No follow-up needed -- reset and advance to next question
+    updated_state = _update_state(
+        updated_state,
+        follow_up_count=0,
+        needs_follow_up=False,
+        follow_up_question=None,
     )
-    if needs_fu and fu_question:
-        updated_state = InterviewState(
-            **{**dict(updated_state),
-               "current_question": fu_question,
-               "follow_up_count": updated_state.get("follow_up_count", 0) + 1,
-               "needs_follow_up": True,
-               "follow_up_question": fu_question,
-               }
-        )
-        question = InterviewQuestion.model_validate(fu_question)
-        return question, updated_state
-
-    # No follow-up needed — reset count and advance to next question
-    updated_state = InterviewState(
-        **{**dict(updated_state),
-           "follow_up_count": 0,
-           "needs_follow_up": False,
-           "follow_up_question": None,
-           }
-    )
-
     return await get_next_question(updated_state)
 
 

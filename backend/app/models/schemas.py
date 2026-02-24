@@ -51,12 +51,12 @@ class InterviewQuestion(BaseModel):
 
 class InterviewReviewRequest(BaseModel):
     confirmed: bool = True
-    additional_notes: str | None = None
+    additional_notes: str | None = Field(None, max_length=5000)
 
 
 class SubmitAnswerRequest(BaseModel):
-    question_id: str = Field(..., min_length=1)
-    answer: str = Field(..., min_length=1)
+    question_id: str = Field(..., min_length=1, max_length=100)
+    answer: str = Field(..., min_length=1, max_length=10000)
     source: Literal["text", "audio"] = "text"
 
 
@@ -75,9 +75,9 @@ class TranscriptionResponse(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    company_name: str = Field(..., min_length=1)
-    website: str = Field(..., min_length=1)
-    cnpj: str | None = None
+    company_name: str = Field(..., min_length=1, max_length=500)
+    website: str = Field(..., min_length=1, max_length=2000)
+    cnpj: str | None = Field(None, max_length=20)
 
 
 class SessionResponse(BaseModel):
