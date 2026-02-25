@@ -5,8 +5,8 @@
 ## Current State
 
 - **Completed**: M0-M6 partial (T01-T36) — 123 tests passing
-- **Next task**: T37 (M6) — Deploy to Railway
-- **After that**: M7 Frontend (Lovable)
+- **Next task**: T36.1 (M6) — API Authentication (X-API-Key)
+- **After that**: T36.2 (SSRF), T36.3 (Rate Limit), T36.4 (Dockerfile), T36.5 (Prod Hardening), T37 (Deploy)
 - **Frontend docs**: see `frontend/docs/`
 
 ## Architecture (10-line summary)
@@ -19,7 +19,7 @@
 - **Web research**: Serper API → 3 parallel queries → deduplicate → GPT consolidation → `enrichment_data["web_research"]`
 - **Audio**: GPT-4o-mini-transcribe, 11 formats, Portuguese
 - **DB**: Single table `onboarding_sessions` with JSON columns for state
-- **Deploy**: Railway/Render with Docker (pending M6)
+- **Deploy**: Railway with Docker (pending M6). Security hardening: API auth, SSRF protection, rate limiting, non-root container, prod API hardening
 
 ## Section Index — Where to Find What
 

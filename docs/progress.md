@@ -13,6 +13,7 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
+| 2026-02-25 | Security hardening before deploy: 5 new tasks (T36.1-T36.5) before T37 | Security review found: no auth, SSRF, no rate limit, root container, exposed docs | T37 dependencies updated, M6 expanded |
 | 2026-02-23 | Core questions 16→10, avatar removed from scope, financial details → planilha | Simplify onboarding: majority select/multiselect, financial params via spreadsheet, avatar in platform | Docs only, T32 redefined |
 | 2026-02-22 | Financial questions → open text, SmartDefaults removed, NegotiationPolicies → text, "defaults" → "review" phase | Specific financial values are campaign-level config, not onboarding-level | 120→116 tests |
 | 2026-02-22 | M5.5: Core 12→14, dynamic 8→3, follow-ups off for dynamic, frustration detection, agent=expert | Onboarding captures only company-specific info | 116→118 tests |
