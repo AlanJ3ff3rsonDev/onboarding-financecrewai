@@ -2,11 +2,12 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine
+from app.dependencies import verify_api_key
 from app.models import orm as _orm  # noqa: F401 — register models with Base
 from app.routers import agent, audio, enrichment, interview, sessions, simulation
 
@@ -32,12 +33,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(sessions.router)
-app.include_router(enrichment.router)
-app.include_router(interview.router)
-app.include_router(audio.router)
-app.include_router(agent.router)
-app.include_router(simulation.router)
+_auth = [Depends(verify_api_key)]
+app.include_router(sessions.router, dependencies=_auth)
+app.include_router(enrichment.router, dependencies=_auth)
+app.include_router(interview.router, dependencies=_auth)
+app.include_router(audio.router, dependencies=_auth)
+app.include_router(agent.router, dependencies=_auth)
+app.include_router(simulation.router, dependencies=_auth)
 
 
 @app.get("/health")

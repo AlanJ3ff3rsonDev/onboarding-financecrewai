@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base, get_db
+from app.dependencies import verify_api_key
 from app.main import app
 from app.models import orm as _orm  # noqa: F401 — register models
 
@@ -45,5 +46,6 @@ def client(setup_db: None) -> TestClient:
             session.close()
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[verify_api_key] = lambda: None
     yield TestClient(app)  # type: ignore[misc]
     app.dependency_overrides.clear()

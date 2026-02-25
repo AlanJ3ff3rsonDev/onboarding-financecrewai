@@ -71,6 +71,7 @@
 | T34.1 | Substituir AgentConfig por OnboardingReport (SOP) | M5.9 | `done` |
 | T35 | CORS configuration | M6 | `done` |
 | T36 | Dockerfile + Railway config | M6 | `done` |
+| T36.1 | API Authentication — X-API-Key | M6 | `done` |
 
 ---
 
@@ -137,7 +138,7 @@
 - Tests updated (all test requests include the API key header)
 - `.env.example` updated
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

@@ -34,6 +34,24 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-25 — T36.1 (M6): API Authentication — X-API-Key
+
+**Status**: completed
+
+**What was done**:
+- Added `API_KEY` field to `Settings` in `config.py` (empty default = safe by default)
+- Created `app/dependencies.py`: `verify_api_key` dependency with `APIKeyHeader` + `secrets.compare_digest`
+- Wired auth to all 6 routers via `dependencies=[Depends(verify_api_key)]` in `main.py`
+- `/health` stays public (defined on `app` directly, not via router)
+- Zero changes to existing router files or test files — auth bypassed via dependency override in `conftest.py`
+- Created `tests/test_auth.py`: 6 tests (missing key, wrong key, empty key, valid key, health public, GET passes auth)
+- Updated `.env.example` and `.env` with `API_KEY`
+
+**Tests**: 129/129 passing (123 existing + 6 new auth tests)
+**Manual**: `/health` → 200, POST without key → 401, POST with wrong key → 401, POST with valid key → 201
+
+---
+
 ### 2026-02-25 — T36 (M6): Dockerfile + Railway Config
 
 **Status**: completed
