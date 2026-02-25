@@ -6,7 +6,8 @@
 
 - **Completed**: M0-M5.9 (T01-T34.1) — 122 tests passing
 - **Next task**: T35 (M6) — CORS configuration
-- **After that**: T36-T37 (M6 Deploy), T38-T44 (M7 Frontend), T45 (M8 Directus)
+- **After that**: T36-T37 (M6 Deploy)
+- **Frontend docs**: see `frontend/docs/`
 
 ## Architecture (10-line summary)
 
@@ -18,7 +19,6 @@
 - **Web research**: Serper API → 3 parallel queries → deduplicate → GPT consolidation → `enrichment_data["web_research"]`
 - **Audio**: GPT-4o-mini-transcribe, 11 formats, Portuguese
 - **DB**: Single table `onboarding_sessions` with JSON columns for state
-- **Frontend**: Lovable (React/TS) at `portal.financecrew.ai` — 6 screens (pending M7)
 - **Deploy**: Railway/Render with Docker (pending M6)
 
 ## Section Index — Where to Find What
@@ -33,7 +33,7 @@
 | **Project structure / files** | `tech_design.md` → Section 2 |
 | **Data model (ORM)** | `tech_design.md` → Section 3 |
 | **Deploy / Docker / CORS** | `tech_design.md` → Section 7 |
-| **Frontend screens / API calls** | `tech_design.md` → Section 8 |
+| **Frontend docs** | `frontend/docs/` (separate project) |
 | **Core questions table** | `PRD.md` → Section 6, FR-2 |
 | **User flow** | `PRD.md` → Section 5 |
 | **Product vision / success metrics** | `PRD.md` → Section 1 |

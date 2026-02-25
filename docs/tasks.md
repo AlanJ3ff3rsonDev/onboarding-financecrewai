@@ -25,8 +25,8 @@
 | **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | DONE |
 | **M5.9** | Simplificar Entrevista + SOP Report | T34, T34.1 | DONE |
 | **M6** | Deploy | T35-T37 | Pending |
-| **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
-| **M8** | Integracao Directus | T45 | Future |
+| **M7** | Frontend Onboarding (Lovable) | T38-T44 | Moved to `frontend/docs/tasks.md` |
+| **M8** | Integracao Directus | T45 | Moved to `frontend/docs/tasks.md` |
 
 ---
 
@@ -112,30 +112,4 @@
 
 ---
 
-## M7: Frontend Onboarding (Lovable) — T38-T44
-
-> Lovable prompts for each screen are in `docs/tasks_archive.md` (to be moved here when M7 starts).
-
-| ID | Task | Dependencies | Status |
-|----|------|-------------|--------|
-| T38 | Tela de boas-vindas | T37 | `pending` |
-| T39 | Tela de enriquecimento | T38 | `pending` |
-| T40 | Tela de entrevista (wizard) | T39 | `pending` |
-| T41 | Tela de revisao da entrevista | T40 | `pending` |
-| T42 | Tela do relatorio SOP | T41 | `pending` |
-| T43 | Tela de simulacao | T42 | `pending` |
-| T44 | Integracao de fluxo completo | T43 | `pending` |
-
----
-
-## M8: Integracao Directus (Future) — T45
-
-### T45: Salvar OnboardingReport no Directus
-
-**Dependencies**: T44
-
-**Definition of Done**:
-- OnboardingReport mapped to Directus "agents" collection
-- Agent appears in platform agents screen
-
-**Status**: `pending`
+> **Frontend tasks (M7-M8)** moved to `frontend/docs/tasks.md`.
