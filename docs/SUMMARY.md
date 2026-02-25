@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Completed**: M0-M5.9 (T01-T34.1) — 122 tests passing
-- **Next task**: T35 (M6) — CORS configuration
-- **After that**: T36-T37 (M6 Deploy)
+- **Completed**: M0-M6 partial (T01-T36) — 123 tests passing
+- **Next task**: T37 (M6) — Deploy to Railway
+- **After that**: M7 Frontend (Lovable)
 - **Frontend docs**: see `frontend/docs/`
 
 ## Architecture (10-line summary)

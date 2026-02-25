@@ -70,6 +70,7 @@
 | T34 | Simplificar entrevista (10→7, remover dinâmicas) | M5.9 | `done` |
 | T34.1 | Substituir AgentConfig por OnboardingReport (SOP) | M5.9 | `done` |
 | T35 | CORS configuration | M6 | `done` |
+| T36 | Dockerfile + Railway config | M6 | `done` |
 
 ---
 
@@ -95,7 +96,7 @@
 - Dockerfile with Python 3.13 + Playwright dependencies
 - docker build + docker run work locally
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

@@ -33,6 +33,21 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-25 — T36 (M6): Dockerfile + Railway Config
+
+**Status**: completed
+
+**What was done**:
+- Created `backend/Dockerfile`: Python 3.13-slim, Playwright system deps, uv via multi-stage copy, `--frozen --no-dev` install, layer caching
+- Created `backend/.dockerignore`: excludes .git, .venv, .env, tests, docs, *.db, __pycache__
+- Build successful, container starts and serves `/health` → `{"status":"ok"}`
+- Playwright verified inside container
+
+**Tests**: 123/123 passing (no code changes, only infra files added)
+**Docker**: `docker build` OK, `docker run` OK, health OK, Playwright OK
+
+---
+
 ### 2026-02-24 — T35 (M6): CORS Configuration
 
 **Status**: completed
