@@ -1,7 +1,11 @@
 """Agent generation, retrieval, and adjustment endpoints."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.limiter import limiter
@@ -41,7 +45,8 @@ async def generate_agent(
     except ValueError as exc:
         session.status = "interviewed"
         db.commit()
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to generate onboarding report for session %s", session_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     session.agent_config = report.model_dump()
     session.status = "generated"

@@ -22,11 +22,16 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     yield
 
 
+_is_production = settings.ENVIRONMENT == "production"
+
 app = FastAPI(
     title="CollectAI Onboarding API",
     description="Self-service onboarding backend for collection agent configuration",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 app.state.limiter = limiter
@@ -45,8 +50,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignor
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS.split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "X-API-Key"],
 )
 
 _auth = [Depends(verify_api_key)]

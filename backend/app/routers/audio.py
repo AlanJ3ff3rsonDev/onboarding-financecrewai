@@ -24,7 +24,15 @@ async def transcribe_audio_endpoint(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    file_bytes = await file.read()
+    max_size = 25 * 1024 * 1024  # 25 MB
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(8192):
+        total += len(chunk)
+        if total > max_size:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 25 MB.")
+        chunks.append(chunk)
+    file_bytes = b"".join(chunks)
     content_type = file.content_type or ""
 
     try:

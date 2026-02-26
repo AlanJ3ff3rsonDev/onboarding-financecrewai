@@ -4,9 +4,9 @@
 
 ## Current State
 
-- **Completed**: M0-M6 partial (T01-T36.1) — 129 tests passing
-- **Next task**: T36.2 (M6) — SSRF Protection on URL Scraping
-- **After that**: T36.3 (Rate Limit), T36.4 (Dockerfile Security), T36.5 (Prod Hardening), T37 (Deploy)
+- **Completed**: M0-M6 partial (T01-T36.5) — 189 tests passing
+- **Next task**: T36.6 (M6) — Rotacionar chaves API (manual user action)
+- **After that**: T36.7 (Filter session fields), T37 (Deploy)
 - **Frontend docs**: see `frontend/docs/`
 
 ## Architecture (10-line summary)

@@ -75,6 +75,7 @@
 | T36.2 | SSRF Protection on URL Scraping | M6 | `done` |
 | T36.3 | Rate Limiting on Expensive Endpoints | M6 | `done` |
 | T36.4 | Dockerfile Security Hardening | M6 | `done` |
+| T36.5 | Production API Hardening | M6 | `done` |
 
 ---
 
@@ -296,7 +297,7 @@
 - Audio upload rejects oversized bodies before reading into memory
 - All tests pass
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

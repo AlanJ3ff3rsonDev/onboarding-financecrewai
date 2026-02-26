@@ -34,6 +34,23 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-26 — T36.5 (M6): Production API Hardening
+
+**Status**: completed
+
+**What was done**:
+- Added `ENVIRONMENT` setting to `config.py` (default: `"development"`)
+- Conditional docs in `main.py`: `docs_url`, `redoc_url`, `openapi_url` set to `None` when `ENVIRONMENT=production`
+- Restricted CORS: `allow_methods=["GET","POST","PUT","OPTIONS"]`, `allow_headers=["Content-Type","Accept","X-API-Key"]`
+- Generic 500 errors in `agent.py` and `simulation.py`: `detail="Internal server error"` + `logger.exception()` for server-side logging
+- Chunked upload in `audio.py`: reads in 8KB chunks, rejects >25MB with 413 before full memory read
+- Updated `.env` and `.env.example` with `ENVIRONMENT=development`
+
+**Tests**: 189/189 passing
+**Manual**: dev → /docs 200, prod → /docs 404, CORS preflight restricted, 26MB upload → 413
+
+---
+
 ### 2026-02-25 — T36.4 (M6): Dockerfile Security Hardening
 
 **Status**: completed

@@ -1,7 +1,11 @@
 """Simulation generation and retrieval endpoints."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.limiter import limiter
@@ -44,7 +48,8 @@ async def generate_simulation_endpoint(
     except ValueError as exc:
         session.status = "generated"
         db.commit()
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("Failed to generate simulation for session %s", session_id)
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     session.simulation_result = result.model_dump()
     session.status = "completed"
