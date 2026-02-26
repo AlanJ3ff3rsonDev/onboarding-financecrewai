@@ -1,9 +1,10 @@
 """Interview question flow endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import (
     InterviewProgressResponse,
@@ -23,7 +24,9 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["interview"])
 
 
 @router.get("/{session_id}/interview/next")
+@limiter.limit("60/minute")
 async def get_next_question(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -57,7 +60,9 @@ async def get_next_question(
 
 
 @router.post("/{session_id}/interview/answer")
+@limiter.limit("20/minute")
 async def post_submit_answer(
+    request: Request,
     session_id: str,
     body: SubmitAnswerRequest,
     db: Session = Depends(get_db),
@@ -112,7 +117,9 @@ async def post_submit_answer(
 
 
 @router.get("/{session_id}/interview/progress")
+@limiter.limit("60/minute")
 async def get_interview_progress(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> InterviewProgressResponse:
@@ -163,7 +170,9 @@ async def get_interview_progress(
 
 
 @router.get("/{session_id}/interview/review")
+@limiter.limit("60/minute")
 async def get_interview_review(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -188,7 +197,9 @@ async def get_interview_review(
 
 
 @router.post("/{session_id}/interview/review")
+@limiter.limit("60/minute")
 async def confirm_interview_review(
+    request: Request,
     session_id: str,
     body: InterviewReviewRequest,
     db: Session = Depends(get_db),

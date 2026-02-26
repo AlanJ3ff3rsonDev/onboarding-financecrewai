@@ -9,8 +9,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base, get_db
 from app.dependencies import verify_api_key
+from app.limiter import limiter
 from app.main import app
 from app.models import orm as _orm  # noqa: F401 — register models
+
+# Disable rate limiting globally for all tests
+limiter.enabled = False
 
 TEST_DATABASE_URL = "sqlite:///./test.db"
 

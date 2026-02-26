@@ -1,9 +1,10 @@
 """Audio upload and transcription endpoint."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import TranscriptionResponse
 from app.services.transcription import transcribe_audio
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["audio"])
 
 
 @router.post("/{session_id}/audio/transcribe", response_model=TranscriptionResponse)
+@limiter.limit("5/minute")
 async def transcribe_audio_endpoint(
+    request: Request,
     session_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),

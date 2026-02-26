@@ -2,12 +2,16 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.database import Base, engine
 from app.dependencies import verify_api_key
+from app.limiter import limiter
 from app.models import orm as _orm  # noqa: F401 — register models with Base
 from app.routers import agent, audio, enrichment, interview, sessions, simulation
 
@@ -25,6 +29,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Try again later."},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)  # type: ignore[arg-type]
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,5 +59,6 @@ app.include_router(simulation.router, dependencies=_auth)
 
 
 @app.get("/health")
-async def health_check() -> dict[str, str]:
+@limiter.exempt
+async def health_check(request: Request) -> dict[str, str]:
     return {"status": "ok"}

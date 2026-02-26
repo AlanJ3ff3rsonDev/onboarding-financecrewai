@@ -1,9 +1,10 @@
 """Agent generation, retrieval, and adjustment endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import AgentAdjustRequest, OnboardingReport
 from app.services.agent_generator import adjust_onboarding_report, generate_onboarding_report
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["agent"])
 
 
 @router.post("/{session_id}/agent/generate")
+@limiter.limit("5/minute")
 async def generate_agent(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -48,7 +51,9 @@ async def generate_agent(
 
 
 @router.get("/{session_id}/agent", response_model=OnboardingReport)
+@limiter.limit("60/minute")
 async def get_agent(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> OnboardingReport:
@@ -63,9 +68,11 @@ async def get_agent(
 
 
 @router.put("/{session_id}/agent/adjust")
+@limiter.limit("5/minute")
 async def adjust_agent(
+    request: Request,
     session_id: str,
-    request: AgentAdjustRequest,
+    body: AgentAdjustRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
     session = db.get(OnboardingSession, session_id)
@@ -81,7 +88,7 @@ async def adjust_agent(
     try:
         report = await adjust_onboarding_report(
             current_report=session.agent_config,
-            adjustments=request.adjustments,
+            adjustments=body.adjustments,
             session_id=session_id,
         )
     except ValueError as exc:

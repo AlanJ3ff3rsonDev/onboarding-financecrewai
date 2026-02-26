@@ -1,9 +1,10 @@
 """Simulation generation and retrieval endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import OnboardingReport, SimulationResult
 from app.services.simulation import generate_simulation
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["simulation"])
 
 
 @router.post("/{session_id}/simulation/generate")
+@limiter.limit("5/minute")
 async def generate_simulation_endpoint(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -51,7 +54,9 @@ async def generate_simulation_endpoint(
 
 
 @router.get("/{session_id}/simulation", response_model=SimulationResult)
+@limiter.limit("60/minute")
 async def get_simulation(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SimulationResult:

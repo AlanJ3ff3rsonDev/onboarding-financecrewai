@@ -1,9 +1,10 @@
 """Session creation and retrieval endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import CreateSessionRequest, CreateSessionResponse, SessionResponse
 
@@ -11,14 +12,16 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=CreateSessionResponse, status_code=201)
+@limiter.limit("60/minute")
 async def create_session(
-    request: CreateSessionRequest,
+    request: Request,
+    body: CreateSessionRequest,
     db: Session = Depends(get_db),
 ) -> CreateSessionResponse:
     session = OnboardingSession(
-        company_name=request.company_name,
-        company_website=request.website,
-        company_cnpj=request.cnpj,
+        company_name=body.company_name,
+        company_website=body.website,
+        company_cnpj=body.cnpj,
     )
     db.add(session)
     db.commit()
@@ -27,7 +30,9 @@ async def create_session(
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
+@limiter.limit("60/minute")
 async def get_session(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> SessionResponse:

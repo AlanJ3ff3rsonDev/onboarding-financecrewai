@@ -214,7 +214,7 @@
 - `/health` exempt from rate limiting
 - Tests pass (test client must handle rate limiter)
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

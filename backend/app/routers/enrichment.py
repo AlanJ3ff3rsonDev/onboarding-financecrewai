@@ -1,9 +1,10 @@
 """Enrichment trigger and results endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.limiter import limiter
 from app.models.orm import OnboardingSession
 from app.models.schemas import CompanyProfile
 from app.services.enrichment import extract_company_profile, scrape_website
@@ -13,7 +14,9 @@ router = APIRouter(prefix="/api/v1/sessions", tags=["enrichment"])
 
 
 @router.post("/{session_id}/enrich")
+@limiter.limit("5/minute")
 async def enrich_session(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> dict[str, object]:
@@ -46,7 +49,9 @@ async def enrich_session(
 
 
 @router.get("/{session_id}/enrichment", response_model=CompanyProfile)
+@limiter.limit("60/minute")
 async def get_enrichment(
+    request: Request,
     session_id: str,
     db: Session = Depends(get_db),
 ) -> CompanyProfile:

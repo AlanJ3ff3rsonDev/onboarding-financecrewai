@@ -34,6 +34,27 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-25 — T36.3 (M6): Rate Limiting on Expensive Endpoints
+
+**Status**: completed
+
+**What was done**:
+- Added `slowapi` dependency (+ `limits`, `deprecated`, `wrapt`)
+- Created `app/limiter.py`: `Limiter(key_func=get_remote_address)` singleton
+- Wired limiter into `app/main.py`: `app.state.limiter`, `SlowAPIMiddleware`, custom 429 handler, `@limiter.exempt` on `/health`
+- Added `@limiter.limit()` decorators to all 15 endpoints across 6 routers:
+  - Heavy (5/min): POST enrich, POST agent/generate, PUT agent/adjust, POST simulation/generate, POST audio/transcribe
+  - Medium (20/min): POST interview/answer
+  - Light (60/min): all GETs, POST sessions, POST interview/review
+- Renamed `request` → `body` for Pydantic params in sessions.py and agent.py to avoid conflict with `request: Request`
+- Disabled limiter globally in `tests/conftest.py` (`limiter.enabled = False`)
+- Created `tests/test_rate_limit.py`: 4 tests with dedicated `rate_limited_client` fixture
+
+**Tests**: 189/189 passing (185 existing + 4 new rate limit tests)
+**Manual**: /health 10x→200, POST /enrich 6th→429, GET /sessions 61st→429, 429 body correct
+
+---
+
 ### 2026-02-25 — T36.2 (M6): SSRF Protection on URL Scraping
 
 **Status**: completed
