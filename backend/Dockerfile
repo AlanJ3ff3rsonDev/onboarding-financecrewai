@@ -15,7 +15,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /bin/
 WORKDIR /app
 
 # Copy dependency files first (layer caching)
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 
 # Install dependencies (frozen = uses lock file exactly)
 RUN uv sync --frozen --no-dev --no-install-project
@@ -26,7 +26,7 @@ RUN uv run playwright install chromium \
     && chown -R appuser:appuser /opt/pw-browsers
 
 # Copy application code
-COPY app/ app/
+COPY backend/app/ app/
 
 # Give appuser ownership of /app (needed for SQLite database file)
 RUN chown -R appuser:appuser /app
@@ -38,4 +38,4 @@ USER appuser
 EXPOSE 8000
 
 # Run server
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
