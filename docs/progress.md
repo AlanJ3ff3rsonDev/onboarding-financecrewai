@@ -34,6 +34,24 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-26 — T37 (M6): Deploy to Railway + Verify
+
+**Status**: completed
+
+**What was done**:
+- Fixed Dockerfile CMD: hardcoded `--port 8000` → `${PORT:-8000}` (shell form for Railway's dynamic PORT)
+- Created `railway.toml` in project root: Dockerfile path, health check `/health`, restart on failure
+- Updated `docs/tech_design.md` Section 7: replaced PENDING placeholder with actual deployed config (platform, env vars, Dockerfile, security summary)
+
+**Tests**: 190/190 passing (no code changes affecting tests)
+**Deploy verified**: `https://onboarding-financecrewai-production.up.railway.app`
+- `/health` → 200 `{"status":"ok"}`
+- `POST /sessions` with API key → 201
+- `/docs` → 404 (disabled in production)
+- `POST /sessions` without auth → 401
+
+---
+
 ### 2026-02-26 — T36.7 (M6): Filtrar campos sensíveis no GET /sessions/{id}
 
 **Status**: completed

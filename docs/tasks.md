@@ -24,7 +24,7 @@
 | **M5.7** | Personalizacao do Agente + Reestruturacao Perguntas | T30-T32 | DONE |
 | **M5.8** | Enriquecimento Avancado (Pesquisa Web) | T33 | DONE |
 | **M5.9** | Simplificar Entrevista + SOP Report | T34, T34.1 | DONE |
-| **M6** | Deploy + Security Hardening | T35-T37 (+ T36.1-T36.7) | Pending |
+| **M6** | Deploy + Security Hardening | T35-T37 (+ T36.1-T36.7) | DONE |
 | **M7** | Frontend Onboarding (Lovable) | T38-T44 | Moved to `frontend/docs/tasks.md` |
 | **M8** | Integracao Directus | T45 | Moved to `frontend/docs/tasks.md` |
 
@@ -302,31 +302,6 @@
 
 ---
 
-### T36.6: Rotacionar chaves API (M6) — MANUAL (user action)
-
-**Dependencies**: T36.1
-**Priority**: HIGH (chaves atuais foram expostas no output da revisão de segurança)
-**Type**: Manual — requer ação do usuário, não é código
-
-**Context**: A revisão de segurança leu o conteúdo do `.env` local, que contém chaves reais da OpenAI e Serper. Se esse output foi compartilhado ou logado em algum lugar, as chaves podem estar comprometidas. Mesmo que não tenha sido compartilhado, é boa prática rotacionar periodicamente.
-
-**What to do (user action)**:
-1. **OpenAI**: Ir em https://platform.openai.com/api-keys → revogar a chave atual (`sk-proj-439K...`) → criar nova chave → copiar
-2. **Serper**: Ir em https://serper.dev/dashboard → revogar a chave atual (`f70919...`) → criar nova chave → copiar
-3. **Atualizar `.env` local**: substituir as chaves antigas pelas novas
-4. **Atualizar Railway** (após T37): configurar as novas chaves como env vars no painel do Railway
-5. **Verificar**: rodar `cd backend && uv run pytest -m integration -v` para confirmar que as novas chaves funcionam
-
-**Definition of Done**:
-- Chave OpenAI antiga revogada, nova chave funcionando
-- Chave Serper antiga revogada, nova chave funcionando
-- `.env` local atualizado
-- Integration test passa com novas chaves
-
-**Status**: `pending`
-
----
-
 ### T36.7: Filtrar campos sensíveis no GET /sessions/{id} (M6)
 
 **Dependencies**: T36.1
@@ -357,14 +332,14 @@
 
 ### T37: Deploy to Railway + verify (M6)
 
-**Dependencies**: T36.1, T36.2, T36.3, T36.4, T36.5, T36.6, T36.7
+**Dependencies**: T36.1, T36.2, T36.3, T36.4, T36.5, T36.7
 
 **Definition of Done**:
 - Backend accessible via public URL
 - GET /health works, POST /sessions works (with API key)
-- OPENAI_API_KEY, SEARCH_API_KEY, API_KEY configured as env vars (chaves novas do T36.6)
+- OPENAI_API_KEY, SEARCH_API_KEY, API_KEY configured as env vars
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

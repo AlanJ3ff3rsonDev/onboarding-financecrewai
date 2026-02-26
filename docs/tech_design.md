@@ -430,48 +430,75 @@ audio bytes + content_type → validate (format, size <25MB)
 
 ---
 
-## 7. Deploy Architecture — PENDING
+## 7. Deploy Architecture — Railway
 
-### Requirements
+### Platform
 
 | Item | Details |
 |------|---------|
-| **CORS** | `portal.financecrew.ai` + `localhost:*` (dev) |
-| **Runtime** | Python 3.13 + Playwright Chromium |
-| **Env vars** | `OPENAI_API_KEY`, `SEARCH_API_KEY`, `ALLOWED_ORIGINS`, `DATABASE_URL` (optional) |
-| **Database** | SQLite (MVP) → PostgreSQL (production) |
-| **Platform** | Railway (recommended) or Render |
+| **Platform** | Railway (Docker deploy) |
+| **Runtime** | Python 3.13-slim + Playwright Chromium |
+| **Container** | Non-root `appuser`, pinned uv 0.6.3 |
+| **Database** | SQLite (ephemeral working memory — Directus in M8 is permanent store) |
+| **Port** | Dynamic via `$PORT` env var (Railway-injected), fallback 8000 |
 
-### Dockerfile (planned)
+### Environment Variables (Railway dashboard)
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | GPT-4.1-mini for extraction, report generation, simulation |
+| `SEARCH_API_KEY` | Serper API for web research |
+| `API_KEY` | X-API-Key header auth (generate with `openssl rand -hex 32`) |
+| `ENVIRONMENT` | `production` (disables /docs, generic 500s) |
+| `ALLOWED_ORIGINS` | Frontend URL(s), comma-separated |
+
+### Railway Config (`railway.toml`)
+
+```toml
+[build]
+dockerfilePath = "backend/Dockerfile"
+
+[build.builder]
+type = "DOCKERFILE"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+```
+
+### Dockerfile (`backend/Dockerfile`)
 
 ```dockerfile
 FROM python:3.13-slim
-# Install system deps for Playwright
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnss3 libatk-bridge2.0-0 libdrm2 libxcomposite1 libxdamage1 \
-    libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0
-# Install uv + project
-COPY . /app
+    libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0 \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -s /bin/bash appuser
+COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /bin/
 WORKDIR /app
-RUN pip install uv && uv sync --frozen
-RUN uv run playwright install chromium
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN uv run playwright install chromium && chown -R appuser:appuser /opt/pw-browsers
+COPY app/ app/
+RUN chown -R appuser:appuser /app
+USER appuser
 EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
 ```
 
-### CORS Config (planned)
+### Security (M6 hardening)
 
-```python
-# app/main.py
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS.split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
+- **Auth**: `X-API-Key` header on all `/api/v1/` endpoints; `/health` public
+- **SSRF**: URL validation rejects private IPs, localhost, non-http schemes
+- **Rate limits**: Heavy 5/min, Medium 20/min, Light 60/min (slowapi)
+- **CORS**: Restricted methods (`GET,POST,PUT,OPTIONS`) and headers (`Content-Type,Accept,X-API-Key`)
+- **Docs**: Disabled in production (`ENVIRONMENT=production`)
+- **Errors**: Generic 500s in production (full errors server-side only)
+- **Upload**: 25MB max, chunked read with early rejection
 
 ---
 
