@@ -2,7 +2,6 @@
 
 import json
 import logging
-from urllib.parse import urlparse
 
 from openai import AsyncOpenAI, OpenAIError
 from playwright.async_api import async_playwright, Error as PlaywrightError
@@ -10,6 +9,7 @@ from playwright.async_api import async_playwright, Error as PlaywrightError
 from app.config import settings
 from app.models.schemas import CompanyProfile
 from app.prompts.enrichment import SYSTEM_PROMPT, build_prompt
+from app.utils.url_validation import validate_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,11 @@ async def scrape_website(url: str) -> str:
 
     Returns clean text or empty string on any failure.
     """
-    # Ensure URL has a scheme
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        url = f"https://{url}"
+    try:
+        url = validate_url(url)
+    except ValueError as exc:
+        logger.warning("URL validation failed for %s: %s", url, exc)
+        return ""
 
     try:
         async with async_playwright() as p:

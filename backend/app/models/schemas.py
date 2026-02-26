@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils.url_validation import validate_url_scheme
 
 
 class WebResearchResult(BaseModel):
@@ -78,6 +80,11 @@ class CreateSessionRequest(BaseModel):
     company_name: str = Field(..., min_length=1, max_length=500)
     website: str = Field(..., min_length=1, max_length=2000)
     cnpj: str | None = Field(None, max_length=20)
+
+    @field_validator("website")
+    @classmethod
+    def validate_website_url(cls, v: str) -> str:
+        return validate_url_scheme(v)
 
 
 class SessionResponse(BaseModel):

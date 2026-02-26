@@ -34,6 +34,24 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-25 — T36.2 (M6): SSRF Protection on URL Scraping
+
+**Status**: completed
+
+**What was done**:
+- Created `app/utils/url_validation.py`: two-layer validation
+  - `validate_url_scheme()` — lightweight (no DNS): rejects non-http(s) schemes, localhost, literal private IPs
+  - `validate_url()` — full (with DNS): resolves hostname, rejects if any IP is private/reserved (IPv4, IPv6, mapped)
+  - Uses only stdlib: `ipaddress`, `socket`, `urllib.parse`
+- Added Pydantic `@field_validator("website")` on `CreateSessionRequest` → catches obvious attacks at API entry (422)
+- Replaced manual scheme-prepend in `scrape_website()` with `validate_url()` call → catches DNS rebinding attacks
+- Removed unused `from urllib.parse import urlparse` from enrichment.py
+
+**Tests**: 185/185 passing (129 existing + 56 new URL validation tests)
+**Manual**: `169.254.169.254` → 422, `file:///etc/passwd` → 422, `https://example.com` → 201
+
+---
+
 ### 2026-02-25 — T36.1 (M6): API Authentication — X-API-Key
 
 **Status**: completed

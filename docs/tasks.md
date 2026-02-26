@@ -72,6 +72,7 @@
 | T35 | CORS configuration | M6 | `done` |
 | T36 | Dockerfile + Railway config | M6 | `done` |
 | T36.1 | API Authentication — X-API-Key | M6 | `done` |
+| T36.2 | SSRF Protection on URL Scraping | M6 | `done` |
 
 ---
 
@@ -175,7 +176,7 @@
 - Valid public URLs still work normally
 - Tests covering all rejection cases + valid URL pass-through
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 
