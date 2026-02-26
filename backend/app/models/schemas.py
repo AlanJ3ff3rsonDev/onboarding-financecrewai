@@ -104,6 +104,21 @@ class SessionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SessionPublicResponse(BaseModel):
+    id: str
+    status: str
+    company_name: str
+    company_website: str
+    company_cnpj: str | None = None
+    interview_responses: list[Any] | None = None
+    agent_config: dict[str, Any] | None = None
+    simulation_result: dict[str, Any] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class CreateSessionResponse(BaseModel):
     session_id: str
     status: str

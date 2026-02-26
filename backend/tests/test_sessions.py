@@ -83,3 +83,34 @@ def test_get_session_not_found(client: TestClient) -> None:
 def test_create_session_missing_fields(client: TestClient) -> None:
     response = client.post("/api/v1/sessions", json={"website": "https://acme.com"})
     assert response.status_code == 422
+
+
+def test_get_session_excludes_internal_fields(client: TestClient, db_session: Session) -> None:
+    """GET /sessions/{id} must NOT expose interview_state or enrichment_data."""
+    from app.models.orm import OnboardingSession
+
+    # Create session with internal data populated
+    session = OnboardingSession(
+        company_name="Sensitive Corp",
+        company_website="https://sensitive.com",
+        enrichment_data={"segment": "Finance", "raw_html": "<html>secret</html>"},
+        interview_state={"phase": "core", "answers": [], "internal": True},
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    # Verify data exists in DB
+    assert session.enrichment_data is not None
+    assert session.interview_state is not None
+
+    # GET via API should exclude sensitive fields
+    response = client.get(f"/api/v1/sessions/{session.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "enrichment_data" not in data
+    assert "interview_state" not in data
+    # Public fields still present
+    assert data["id"] == session.id
+    assert data["company_name"] == "Sensitive Corp"
+    assert data["status"] == "created"

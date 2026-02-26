@@ -76,6 +76,7 @@
 | T36.3 | Rate Limiting on Expensive Endpoints | M6 | `done` |
 | T36.4 | Dockerfile Security Hardening | M6 | `done` |
 | T36.5 | Production API Hardening | M6 | `done` |
+| T36.7 | Filtrar campos sensíveis no GET /sessions/{id} | M6 | `done` |
 
 ---
 
@@ -350,7 +351,7 @@
 - Frontend continua funcionando normalmente
 - Tests updated
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

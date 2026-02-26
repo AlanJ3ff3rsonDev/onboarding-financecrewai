@@ -174,10 +174,6 @@ def test_interview_state_persisted(client: TestClient) -> None:
     resp1 = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp1.status_code == 200
 
-    # Verify state stored in DB
-    session_resp = client.get(f"/api/v1/sessions/{session_id}")
-    assert session_resp.json()["interview_state"] is not None
-
     # Second call — same question (idempotent, no advancement)
     resp2 = client.get(f"/api/v1/sessions/{session_id}/interview/next")
     assert resp2.status_code == 200
@@ -321,10 +317,6 @@ def test_answer_stored_in_session(client: TestClient) -> None:
     assert responses[1]["answer"] == "Cobrança via WhatsApp e telefone"
     assert responses[1]["source"] == "text"
 
-    # Also check interview_state has the answers
-    state = session_data["interview_state"]
-    assert len(state["answers"]) == 2
-    assert state["current_question"]["question_id"] == "core_2"
 
 
 def test_wrong_question_id_endpoint(client: TestClient) -> None:

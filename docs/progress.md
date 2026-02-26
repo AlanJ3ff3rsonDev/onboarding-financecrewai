@@ -34,6 +34,21 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-26 — T36.7 (M6): Filtrar campos sensíveis no GET /sessions/{id}
+
+**Status**: completed
+
+**What was done**:
+- Created `SessionPublicResponse` in `schemas.py` — excludes `enrichment_data` and `interview_state`
+- Swapped `response_model` in `GET /sessions/{id}` from `SessionResponse` → `SessionPublicResponse`
+- Removed test assertions on `interview_state` (test_interview.py) and `enrichment_data` (test_integration.py)
+- Added `test_get_session_excludes_internal_fields` regression test in test_sessions.py
+
+**Tests**: 189/189 passing
+**Manual**: `GET /sessions/{id}` — `enrichment_data` and `interview_state` absent, public fields present
+
+---
+
 ### 2026-02-26 — T36.5 (M6): Production API Hardening
 
 **Status**: completed

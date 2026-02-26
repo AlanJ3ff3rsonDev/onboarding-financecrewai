@@ -233,7 +233,6 @@ def test_full_onboarding_flow(client: TestClient) -> None:
     assert resp.status_code == 200
     session = resp.json()
     assert session["status"] == "completed"
-    assert session["enrichment_data"] is not None
     assert session["interview_responses"] is not None
     assert session["agent_config"] is not None
     assert session["simulation_result"] is not None

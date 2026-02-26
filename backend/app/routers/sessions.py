@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.limiter import limiter
 from app.models.orm import OnboardingSession
-from app.models.schemas import CreateSessionRequest, CreateSessionResponse, SessionResponse
+from app.models.schemas import CreateSessionRequest, CreateSessionResponse, SessionPublicResponse
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
@@ -29,14 +29,14 @@ async def create_session(
     return CreateSessionResponse(session_id=session.id, status=session.status)
 
 
-@router.get("/{session_id}", response_model=SessionResponse)
+@router.get("/{session_id}", response_model=SessionPublicResponse)
 @limiter.limit("60/minute")
 async def get_session(
     request: Request,
     session_id: str,
     db: Session = Depends(get_db),
-) -> SessionResponse:
+) -> SessionPublicResponse:
     session = db.get(OnboardingSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return SessionResponse.model_validate(session)
+    return SessionPublicResponse.model_validate(session)
