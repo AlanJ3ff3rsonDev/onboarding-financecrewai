@@ -73,6 +73,8 @@
 | T36 | Dockerfile + Railway config | M6 | `done` |
 | T36.1 | API Authentication — X-API-Key | M6 | `done` |
 | T36.2 | SSRF Protection on URL Scraping | M6 | `done` |
+| T36.3 | Rate Limiting on Expensive Endpoints | M6 | `done` |
+| T36.4 | Dockerfile Security Hardening | M6 | `done` |
 
 ---
 
@@ -248,7 +250,7 @@
 - `docker build` + `docker run` + `/health` work
 - Playwright works inside container
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

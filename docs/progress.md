@@ -34,6 +34,22 @@ Full workflow: mark in_progress → implement → test task → test full suite 
 
 ## Development Log
 
+### 2026-02-25 — T36.4 (M6): Dockerfile Security Hardening
+
+**Status**: completed
+
+**What was done**:
+- Pinned uv version: `ghcr.io/astral-sh/uv:latest` → `ghcr.io/astral-sh/uv:0.6.3`
+- Created non-root `appuser` via `useradd`
+- Set `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, installed as root, `chown` to appuser
+- `chown -R appuser:appuser /app` for SQLite database write access
+- `USER appuser` before CMD
+
+**Tests**: 189/189 passing (no code changes)
+**Docker**: build OK, `/health` → `{"status":"ok"}`, `whoami` → `appuser`, Playwright OK inside container
+
+---
+
 ### 2026-02-25 — T36.3 (M6): Rate Limiting on Expensive Endpoints
 
 **Status**: completed

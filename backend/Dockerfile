@@ -6,8 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Create non-root user
+RUN useradd -m -s /bin/bash appuser
+
+# Install uv (pinned version)
+COPY --from=ghcr.io/astral-sh/uv:0.6.3 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -17,11 +20,19 @@ COPY pyproject.toml uv.lock ./
 # Install dependencies (frozen = uses lock file exactly)
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Install Playwright Chromium
-RUN uv run playwright install chromium
+# Install Playwright Chromium (as root, then fix ownership)
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN uv run playwright install chromium \
+    && chown -R appuser:appuser /opt/pw-browsers
 
 # Copy application code
 COPY app/ app/
+
+# Give appuser ownership of /app (needed for SQLite database file)
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8000
