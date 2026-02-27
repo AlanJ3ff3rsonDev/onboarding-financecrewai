@@ -10,6 +10,8 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 
 | Date | Decision | Reason | Impact |
 |------|----------|--------|--------|
+| 2026-02-27 | Onboarding requires Directus login (ProtectedRoute). Temporarily public during dev, restored in T44 | Directus is the auth backend. Onboarding is mandatory for new users — they can't access the platform until they complete it. Kept public now to avoid login friction during screen-by-screen testing | T44: restore ProtectedRoute + add forced redirect (login → not onboarded → /onboarding → complete → dashboard) |
+| 2026-02-27 | Branding: "Finance Crew AI" (not "CollectAI") | Company was renamed | Updated OnboardingLayout header + welcome title i18n keys |
 
 ---
 

@@ -145,6 +145,9 @@
 - Loading states on all slow operations
 - Mobile responsive
 - Tested with a real backend session (not mocked)
+- Restore `ProtectedRoute` on all `/onboarding` routes (requires Directus login)
+- Add redirect logic: after login, if user has not completed onboarding → force redirect to `/onboarding`
+- After onboarding complete → redirect to dashboard
 
 **Status**: `pending`
 
