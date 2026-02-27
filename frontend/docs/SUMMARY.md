@@ -6,8 +6,8 @@
 
 - **Backend**: M0-M6 complete. Deployed at `onboarding-financecrewai-production.up.railway.app`
 - **Frontend**: In progress — building on branch `feat/onboarding` in `crew-ai-dashboard` repo
-- **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas), T39 (Tela de enriquecimento)
-- **Next task**: T40 (Tela de entrevista — wizard)
+- **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas), T39 (Tela de enriquecimento), T40 (Tela de entrevista)
+- **Next task**: T41 (Tela de revisao da entrevista)
 
 ## Platform Stack (crew-ai-dashboard)
 

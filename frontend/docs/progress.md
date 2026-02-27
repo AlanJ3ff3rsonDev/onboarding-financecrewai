@@ -12,6 +12,10 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 |------|----------|--------|--------|
 | 2026-02-27 | Onboarding requires Directus login (ProtectedRoute). Temporarily public during dev, restored in T44 | Directus is the auth backend. Onboarding is mandatory for new users — they can't access the platform until they complete it. Kept public now to avoid login friction during screen-by-screen testing | T44: restore ProtectedRoute + add forced redirect (login → not onboarded → /onboarding → complete → dashboard) |
 | 2026-02-27 | Branding: "Finance Crew AI" (not "CollectAI") | Company was renamed | Updated OnboardingLayout header + welcome title i18n keys |
+| 2026-02-27 | Optional badge/skip only for follow-up questions | Core questions core_0 and core_6 have `is_required=false` but should not show as optional/skippable in UI. Only follow-ups are truly skippable | Check `!is_required && phase === "follow_up"` — not just `!is_required` |
+| 2026-02-27 | Canvas-based audio visualizer (not React DOM) | Using `setState` at 60fps for div-based bars caused React batching — bars filled/dropped "all at once". Canvas with direct 2D context draws every frame smoothly | Audio visualizer must use `<canvas>` + `requestAnimationFrame`, never React state for per-frame updates |
+| 2026-02-27 | Skip sends `"-"` (not empty string) | Backend `SubmitAnswerRequest.answer` has `min_length=1` — empty string `""` returns 422. Dash is a sentinel value for "no answer" | All non-required questions auto-fill `"-"` if submitted empty |
+| 2026-02-27 | Audio transcription appends, not replaces | User records multiple segments — each transcription should add to existing text, not overwrite | `setAnswer(prev => prev ? prev + " " + text : text)` |
 
 ---
 
@@ -23,6 +27,45 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 ---
 
 ## Development Log
+
+### 2026-02-27 — T40 (M7): Tela de Entrevista
+
+**Status**: done
+
+**What was done**:
+- Built full interview wizard in `OnboardingInterview.tsx` (~500 lines) replacing stub
+- Question rendering by type: `<Textarea>` for text, `<RadioGroup>` for select, `<Checkbox>` group for multiselect
+- Progress bar: `<Progress>` component updated after each answer via `getProgress()`
+- Audio recording: `MediaRecorder API` (webm), `transcribeAudio()` sends to backend
+- Auto-stop on silence: `AnalyserNode` + `getByteTimeDomainData()` computes RMS every 200ms, stops after 3s below threshold
+- Audio transcription appends to existing text (not replaces) — user can record multiple segments
+- Canvas-based audio visualizer: volume envelope approach (RMS per 50ms sample), scrolling bars drawn on `<canvas>` with `requestAnimationFrame`, HiDPI support via `devicePixelRatio`
+- Optional/skip logic: only follow-up questions (`!is_required && phase === "follow_up"`) show "Opcional" badge and "Pular" button
+- Non-required core questions auto-fill `"-"` when submitted empty (backend requires `min_length=1`)
+- `animate-fade-in-up` transitions between questions
+- Fixed `audio.ts`: endpoint path `/interview/transcribe` → `/audio/transcribe`
+- Added `onboarding.interview.*` i18n keys (18 keys) to pt-BR, en, es
+
+**Tests**:
+- `tsc --noEmit` — 0 errors
+- Manual: user tested full flow — all 7 core questions, follow-ups on "sim", audio recording with visualizer, skip on follow-ups, redirect to review at end
+- Audio visualizer: real-time flowing bars confirmed working (canvas approach)
+- Session recovery: refresh mid-interview resumes at correct question
+
+**Bugs found & fixed**:
+- `audio.ts` wrong endpoint path (was `/interview/transcribe`, should be `/audio/transcribe`)
+- Backend rejects empty answer string (`min_length=1`) — skip now sends `"-"`
+- `AudioContext` suspended state (browser autoplay policy) — added `await audioCtx.resume()`
+- All questions showing as optional — fixed: only `follow_up` phase questions are skippable
+- Audio visualizer with `setState` at 60fps caused batched/laggy updates — rewrote to canvas-based rendering
+
+**Iterations on audio visualizer**:
+1. Div-based bars with `setState` → React batching killed smooth animation
+2. Frequency-domain (`getByteFrequencyData`) → voice concentrated in low bins, most bars stayed flat
+3. Time-domain waveform → sensitivity too low for laptop mics
+4. Final: Canvas + volume envelope (RMS) + scrolling history → smooth, responsive, like WhatsApp/Wispr Flow
+
+---
 
 ### 2026-02-27 — T39 (M7): Tela de Enriquecimento
 

@@ -87,7 +87,7 @@
 - Skippable questions when `is_required` is false
 - Navigates to review when `next_question` is null
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

@@ -7,12 +7,14 @@ This document contains everything needed to build the frontend against the backe
 ## 1. API Endpoints
 
 **Base URL**: `{BACKEND_URL}/api/v1`
-- Production: TBD (after T37 deploy)
+- Production: `https://onboarding-financecrewai-production.up.railway.app/api/v1`
 - Local dev: `http://localhost:8000/api/v1`
 
-**CORS**: Already configured for `portal.financecrew.ai`, `localhost:3000`, `localhost:5173`
+**Auth**: All endpoints require `X-API-Key` header (except `/health`)
 
-**Interactive docs**: Swagger UI at `{BACKEND_URL}/docs`
+**CORS**: Configured for `portal.financecrew.ai`, `localhost:3000`, `localhost:5173`
+
+**Interactive docs**: Swagger UI at `{BACKEND_URL}/docs` (dev only, disabled in production)
 
 ### Sessions
 
@@ -283,11 +285,21 @@ No dynamic questions phase in current version.
 ### Frontend Handling
 
 1. Call `GET /interview/next` to get the first question
-2. Display the question based on `question_type`
+2. Display the question based on `question_type`:
+   - `text` → `<Textarea>`, optional mic button if `supports_audio`
+   - `select` → `<RadioGroup>` with `<RadioGroupItem>` per option
+   - `multiselect` → `<Checkbox>` per option, answer = comma-separated values
 3. User submits answer → `POST /interview/answer`
 4. Response contains `next_question` — display it
-5. If `next_question` is null → navigate to review screen
+5. If `next_question` is null → `setStatus("interviewed")`, navigate to review screen
 6. Check `phase` field: when `"review"`, interview is done
+
+### Frontend Rules (learned in T40)
+
+- **Optional/skip**: Only `follow_up` phase questions are skippable. Core questions core_0 and core_6 have `is_required=false` but should NOT show skip button or "Opcional" badge. Check: `!is_required && phase === "follow_up"`
+- **Empty answers**: Backend `SubmitAnswerRequest.answer` has `min_length=1`. Skip/empty answers must send `"-"` (not `""`). Non-required core questions auto-fill `"-"` if user submits empty.
+- **Progress bar**: Call `getProgress()` after each successful answer to update the bar. Display as `"X de Y perguntas"`.
+- **Pre-filled values**: If `pre_filled_value` is set, pre-populate the input. For select/multiselect, pre-select the matching option(s).
 
 ---
 
@@ -315,6 +327,18 @@ Voice input is an alternative to typing for text questions.
 - Show recording indicator (red dot / timer) while recording
 - Allow user to cancel recording before submitting
 - Handle permission denial gracefully (show text-only input)
+
+### Implementation Details (from T40)
+
+- **Auto-stop on silence**: Use `AnalyserNode` + `getByteTimeDomainData()` to compute RMS every 200ms. After 3 seconds below threshold (`SILENCE_THRESHOLD = 4`), auto-stop recording. Requires `await audioContext.resume()` after creation (browser autoplay policy).
+- **Transcription appends**: Multiple recordings append text (not replace). Logic: `setAnswer(prev => prev.trimEnd() ? prev.trimEnd() + " " + text : text)`
+- **Audio visualizer**: Must use `<canvas>` element with `requestAnimationFrame` loop — NOT React state (`setState` at 60fps causes batching/lag). Approach:
+  1. Compute RMS from `getByteTimeDomainData()` every 50ms
+  2. Apply noise gate (`NOISE_GATE = 0.008`) and sensitivity scaling (`SENSITIVITY = 0.15`)
+  3. Push to scrolling bar history array
+  4. Draw bars right-to-left on canvas with `ctx.roundRect`
+  5. HiDPI support via `window.devicePixelRatio`
+  6. Constants: `BAR_WIDTH=3`, `BAR_GAP=2`, `BAR_RADIUS=1.5`, `MIN_BAR_H=3`, `CANVAS_HEIGHT=56`
 
 ---
 
@@ -398,3 +422,123 @@ Screen 6: Simulacao
 | 4 | GET /review, POST /review | < 1s |
 | 5 | POST /agent/generate | ~15s |
 | 6 | POST /simulation/generate | ~20s |
+
+---
+
+## 7. Platform Integration (crew-ai-dashboard)
+
+How the onboarding module integrates with the existing platform.
+
+### Repo & Branch
+
+- **Repo**: `financecrew/crew-ai-dashboard` (private, Lovable GitHub Sync)
+- **Branch**: `feat/onboarding` (from `main`)
+- **Lovable deploys from `main`** — onboarding code only reaches production after merge
+
+### Stack (confirmed from repo)
+
+- React 18.3 + TypeScript 5.8 + Vite 5.4
+- Tailwind CSS 3.4 + shadcn/ui (51 components installed)
+- React Router DOM 6.30 (routes in `src/App.tsx`)
+- Directus SDK 21.1 (auth, data)
+- TanStack React Query 5.83
+- react-i18next (PT-BR, EN, ES locales in `src/i18n/locales/`)
+- Lucide React (icons)
+- Path alias: `@/` -> `./src/`
+
+### Feature Flag
+
+The platform has `FeatureFlagContext` (`src/contexts/FeatureFlagContext.tsx`) with `isEnabled()`, `setFlag()`, `toggleFlag()`.
+
+Add `"onboarding": false` to `defaultFlags`. When enabled, new users without completed onboarding are redirected to `/onboarding`.
+
+### Layout
+
+`App.tsx` uses `hideLayout` pattern — when route is `/login`, sidebar and header are hidden. Extend this for `/onboarding` routes:
+
+```tsx
+const hideLayout = location.pathname === "/login" || location.pathname.startsWith("/onboarding");
+```
+
+Onboarding screens use their own `OnboardingLayout` (logo + step indicator + centered content) instead of the platform's Sidebar + AdminHeader.
+
+### Routing
+
+Routes are defined in `src/App.tsx` inside `<Routes>`. Add onboarding routes conditionally:
+
+```tsx
+{isOnboardingEnabled && (
+  <>
+    <Route path="/onboarding" element={<OnboardingWelcome />} />
+    <Route path="/onboarding/enrichment" element={<OnboardingEnrichment />} />
+    <Route path="/onboarding/interview" element={<OnboardingInterview />} />
+    <Route path="/onboarding/review" element={<OnboardingReview />} />
+    <Route path="/onboarding/report" element={<OnboardingReport />} />
+    <Route path="/onboarding/simulation" element={<OnboardingSimulation />} />
+    <Route path="/onboarding/complete" element={<OnboardingComplete />} />
+  </>
+)}
+```
+
+### API Client (separate from Directus)
+
+The onboarding backend is a **different service** from Directus. Needs its own API client:
+
+```
+VITE_ONBOARDING_API_URL=https://onboarding-financecrewai-production.up.railway.app/api/v1
+VITE_ONBOARDING_API_KEY=<api-key>
+```
+
+Use axios or fetch with `X-API-Key` header. 60s timeout for slow operations.
+
+### Design System (from `src/index.css`)
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--primary` | `84 100% 51%` | Bright lime green — buttons, accents, focus rings |
+| `--background` | `0 0% 98%` | Off-white page background |
+| `--foreground` | `0 0% 5%` | Near-black text |
+| `--muted` | `210 20% 96%` | Light gray surfaces |
+| `--muted-foreground` | `0 0% 45%` | Secondary text |
+| `--border` | `214 25% 90%` | Border color |
+| `--radius` | `0.75rem` | Default border radius |
+| `--destructive` | `0 84% 60%` | Error red |
+| `--success` | `142 76% 36%` | Success green |
+
+Animations available: `fade-in` (0.5s), `fade-in-up` (0.4s), `slide-in-right` (0.3s), `scale-in` (0.2s), `pulse-glow` (2s infinite).
+
+### i18n
+
+Add onboarding translation keys to `src/i18n/locales/pt-BR.json` (and en.json, es.json):
+
+```json
+{
+  "onboarding": {
+    "welcome": { "title": "...", "subtitle": "...", ... },
+    "enrichment": { ... },
+    "interview": { ... },
+    "review": { ... },
+    "report": { ... },
+    "simulation": { ... }
+  }
+}
+```
+
+### Auth Integration
+
+Onboarding pages are **inside** ProtectedRoute (user must be logged in). The `useAuth()` hook provides the current user. The `useCompany()` hook provides the selected company.
+
+### File Structure
+
+```
+src/
+  features/
+    onboarding/
+      api/          # API client + typed functions for onboarding backend
+      components/   # OnboardingLayout, StepIndicator, QuestionCard, etc.
+      hooks/        # useOnboardingSession, useInterview, useAudioRecording
+      pages/        # One page per screen (7 files)
+      context/      # OnboardingContext (session state)
+```
+
+If the repo uses flat `src/pages/`, adapt to `src/pages/onboarding/` instead
