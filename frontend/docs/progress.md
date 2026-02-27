@@ -22,6 +22,37 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 
 ## Development Log
 
+### 2026-02-27 — T38 (M7): Tela de Boas-Vindas
+
+**Status**: done
+
+**What was done**:
+- Replaced `OnboardingWelcome.tsx` stub with full welcome form: hero section, 3 fields with icon prefixes (Building2, Globe, Hash), submit button with loading state
+- Fields: company name (required), website (required), CNPJ (optional with mask placeholder)
+- Integration: `createSession()` API → `setSessionId()` + `setStatus()` in context → navigate to `/onboarding/enrichment`
+- Validation: toast error on empty required fields, API error handling with toast
+- Recovery state: shows spinner while `isRecovering` (session restoration from localStorage)
+- Staggered `animate-fade-in-up` entrance animations
+- Added `onboarding.welcome.*` i18n keys (13 keys) to pt-BR, en, es
+- Removed `ProtectedRoute` from all onboarding routes — onboarding is public (no Directus login needed)
+- Updated branding: "CollectAI" → "Finance Crew AI" in header and title
+- Added `http://localhost:8080` to backend CORS default origins (`config.py`)
+- Fixed `railway.toml`: `[build.builder] type = "DOCKERFILE"` → `builder = "DOCKERFILE"` (Railway config format change)
+
+**Tests**:
+- `tsc --noEmit` — 0 errors
+- Backend: 190/190 tests passing
+- API: `POST /sessions` returns 201 with valid session_id
+- CORS preflight: `access-control-allow-origin: http://localhost:8080` confirmed
+- Manual: user verified form renders correctly in browser
+
+**Bugs found & fixed**:
+- Onboarding routes wrapped in `ProtectedRoute` blocked access — removed (onboarding is public)
+- Railway deploy failing with `build.builder: Invalid input` — config format changed, fixed
+- i18n showing English — expected behavior (browser language detection), not a bug
+
+---
+
 ### 2026-02-27 — T37.5 (M7): Setup + Infraestrutura do Onboarding
 
 **Status**: done

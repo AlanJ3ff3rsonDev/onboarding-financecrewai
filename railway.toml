@@ -1,8 +1,6 @@
 [build]
+builder = "DOCKERFILE"
 dockerfilePath = "backend/Dockerfile"
-
-[build.builder]
-type = "DOCKERFILE"
 
 [deploy]
 healthcheckPath = "/health"

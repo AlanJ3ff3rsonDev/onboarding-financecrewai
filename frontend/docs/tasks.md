@@ -51,7 +51,7 @@
 - Navigates to enrichment screen on success
 - All text in Portuguese
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

@@ -1,4 +1,4 @@
-# Frontend Summary — CollectAI Self-Service Onboarding
+# Frontend Summary — Finance Crew AI Self-Service Onboarding
 
 > **Read this FIRST every session.** Only go to the full docs when you need detail for a specific section.
 
@@ -6,8 +6,8 @@
 
 - **Backend**: M0-M6 complete. Deployed at `onboarding-financecrewai-production.up.railway.app`
 - **Frontend**: In progress — building on branch `feat/onboarding` in `crew-ai-dashboard` repo
-- **Completed**: T37.5 (Setup + infra) — branch `feat/onboarding`, API client, types, context, layout, routes, i18n
-- **Next task**: T38 (Tela de boas-vindas)
+- **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas)
+- **Next task**: T39 (Tela de enriquecimento)
 
 ## Platform Stack (crew-ai-dashboard)
 
