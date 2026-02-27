@@ -1,7 +1,84 @@
-# Progress Archive (T01-T31)
+# Progress Archive (T01-T36.7)
 
-Archived from `progress.md`. These entries document completed work from M0-M5.7.
+Archived from `progress.md`. These entries document completed work from M0-M6.
 For current progress, see `progress.md`.
+
+---
+
+### 2026-02-26 — T36.7 (M6): Filtrar campos sensíveis no GET /sessions/{id}
+**Status**: completed
+- Created SessionPublicResponse — excludes enrichment_data and interview_state
+- Tests: 189/189
+
+---
+
+### 2026-02-26 — T36.5 (M6): Production API Hardening
+**Status**: completed
+- ENVIRONMENT setting, conditional /docs, restricted CORS, generic 500s, chunked audio upload 25MB
+- Tests: 189/189
+
+---
+
+### 2026-02-25 — T36.4 (M6): Dockerfile Security Hardening
+**Status**: completed
+- Pinned uv 0.6.3, non-root appuser, Playwright browser path
+- Tests: 189/189
+
+---
+
+### 2026-02-25 — T36.3 (M6): Rate Limiting
+**Status**: completed
+- slowapi: Heavy 5/min, Medium 20/min, Light 60/min
+- Tests: 189/189
+
+---
+
+### 2026-02-25 — T36.2 (M6): SSRF Protection
+**Status**: completed
+- Two-layer URL validation (scheme + DNS), Pydantic field_validator
+- Tests: 185/185
+
+---
+
+### 2026-02-25 — T36.1 (M6): API Authentication
+**Status**: completed
+- X-API-Key header, secrets.compare_digest, /health stays public
+- Tests: 129/129
+
+---
+
+### 2026-02-25 — T36 (M6): Dockerfile + Railway Config
+**Status**: completed
+- Python 3.13-slim, Playwright, uv multi-stage, layer caching
+- Tests: 123/123
+
+---
+
+### 2026-02-24 — T35 (M6): CORS Configuration
+**Status**: completed
+- CORSMiddleware with ALLOWED_ORIGINS env var
+- Tests: 122/122
+
+---
+
+### 2026-02-24 — T34.1 (M5.9): OnboardingReport (SOP)
+**Status**: completed
+- Replaced AgentConfig with OnboardingReport (9 sub-models)
+- Tests: 122/122
+
+---
+
+### 2026-02-24 — T34 (M5.9): Simplificar Entrevista (10→7)
+**Status**: completed
+- Core questions 10→7, removed dynamic questions, deterministic follow-ups
+- Tests: 123/123
+
+---
+
+### 2026-02-23 — T33 (M5.8): Pesquisa Web (Serper API)
+**Status**: completed
+- 3 parallel Serper queries → GPT consolidation → WebResearchResult
+- Tests: 134/134
 
 ---
 

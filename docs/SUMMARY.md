@@ -4,10 +4,9 @@
 
 ## Current State
 
-- **Completed**: M0-M6 partial (T01-T36.5) — 189 tests passing
-- **Next task**: T36.6 (M6) — Rotacionar chaves API (manual user action)
-- **After that**: T36.7 (Filter session fields), T37 (Deploy)
-- **Frontend docs**: see `frontend/docs/`
+- **Backend**: M0-M6 DONE (T01-T37) — 190 tests passing. Deployed at Railway.
+- **Frontend**: M7 in progress — tracked in `frontend/docs/`
+- **No pending backend tasks.** All future work is frontend (M7-M8).
 
 ## Architecture (10-line summary)
 

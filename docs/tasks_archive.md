@@ -1,4 +1,4 @@
-# Tasks Archive (M0-M5.8) — Completed
+# Tasks Archive (M0-M6) — Completed
 
 Archived from `tasks.md`. Full task definitions for all completed milestones.
 For active/pending tasks, see `tasks.md`.
@@ -173,4 +173,56 @@ Status: `done`
 
 ### T33: Pesquisa web sobre a empresa no enrichment
 Serper API → 3 parallel queries (empresa geral, produtos/clientes, setor+cobrança) → deduplicate by URL → GPT-4.1-mini consolidation → WebResearchResult stored as `enrichment_data["web_research"]`. New files: services/web_research.py, prompts/web_research.py, tests/test_web_research.py. Graceful skip if no SEARCH_API_KEY.
+Status: `done`
+
+---
+
+## M5.9: Simplificar Entrevista + SOP Report (T34, T34.1) — DONE
+
+### T34: Simplificar entrevista (10→7 perguntas, remover dinâmicas)
+Core questions 10→7, removed dynamic questions entirely, added deterministic follow-ups for policy questions, hardcoded defaults for tone/guardrails/escalation.
+Status: `done`
+
+### T34.1: Substituir AgentConfig por OnboardingReport (SOP)
+Replaced AgentConfig with OnboardingReport (9 sub-models). system_prompt → expert_recommendations, scenario_responses → collection_profile. ORM column `agent_config` kept (no migration).
+Status: `done`
+
+---
+
+## M6: Deploy + Security Hardening (T35-T37) — DONE
+
+### T35: CORS configuration
+CORSMiddleware with ALLOWED_ORIGINS env var. Default: localhost:3000,localhost:5173,localhost:8080,portal.financecrew.ai.
+Status: `done`
+
+### T36: Dockerfile + Railway config
+Python 3.13-slim, Playwright deps, uv multi-stage copy, --frozen --no-dev, layer caching. .dockerignore.
+Status: `done`
+
+### T36.1: API Authentication — X-API-Key
+APIKeyHeader + secrets.compare_digest in dependencies.py. Applied to all routers via main.py. /health stays public.
+Status: `done`
+
+### T36.2: SSRF Protection on URL Scraping
+Two-layer validation: validate_url_scheme() (no DNS) + validate_url() (with DNS). Pydantic field_validator on CreateSessionRequest.website.
+Status: `done`
+
+### T36.3: Rate Limiting on Expensive Endpoints
+slowapi: Heavy 5/min (enrich, generate, simulate, transcribe), Medium 20/min (answer), Light 60/min (reads). /health exempt.
+Status: `done`
+
+### T36.4: Dockerfile Security Hardening
+Pinned uv 0.6.3, non-root appuser, PLAYWRIGHT_BROWSERS_PATH with chown.
+Status: `done`
+
+### T36.5: Production API Hardening
+ENVIRONMENT setting, conditional /docs, restricted CORS methods/headers, generic 500 errors, chunked audio upload (25MB limit).
+Status: `done`
+
+### T36.7: Filtrar campos sensíveis no GET /sessions/{id}
+SessionPublicResponse excludes enrichment_data and interview_state. Regression test added.
+Status: `done`
+
+### T37: Deploy to Railway + verify
+Dockerfile CMD with ${PORT:-8000}, railway.toml, deployed at onboarding-financecrewai-production.up.railway.app.
 Status: `done`

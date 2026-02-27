@@ -61,12 +61,15 @@
 
 **Definition of Done**:
 - Calls `POST /sessions/{id}/enrich` on mount
-- Loading state with progress indicators (~15s)
-- Displays CompanyProfile data (segment, products, target audience, tone)
-- Handles partial enrichment gracefully
-- "Continuar" button navigates to interview screen
+- Animated loading screen (~15s): cycling icons (Globe→Search→FileText→Sparkles), spinning dashed ring, ping radar, step dots, gradient progress bar
+- Handles 409 Conflict (already enriched) → falls back to GET
+- Handles session recovery: polls `GET /sessions/{id}` until enriched
+- StrictMode double-mount guard with `useRef`
+- Auto-navigates to `/onboarding/interview` when enrichment completes (no results screen)
+- Error phase with retry button
+- Removed `type="url"` from welcome screen website input (was blocking valid URLs)
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

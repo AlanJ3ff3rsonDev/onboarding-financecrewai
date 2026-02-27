@@ -24,6 +24,26 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 
 ## Development Log
 
+### 2026-02-27 — T39 (M7): Tela de Enriquecimento
+
+**Status**: done
+
+**What was done**:
+- Fixed `getEnrichment()` return type: `EnrichResponse` → `CompanyProfile` (backend GET returns flat object)
+- Built animated loading screen: cycling icons (Globe→Search→FileText→Sparkles) every 4s, spinning dashed ring, ping radar effect, step dots indicator, gradient progress bar
+- Added 5 custom Tailwind animations: `spin-slow`, `ping-ring`, `icon-swap`, `slide-up-fade`, `progress-fill`
+- Auto-navigates to `/onboarding/interview` on success (no results screen — enrichment data used only by backend for report generation)
+- Edge cases: 409 Conflict fallback, StrictMode double-mount guard, session recovery polling, retry on error
+- Removed `type="url"` from welcome screen website input (browser rejected valid URLs like `https.www.site.com`)
+- Added `onboarding.enrichment.*` i18n keys to pt-BR, en, es (loading steps, field labels, error messages)
+
+**Tests**:
+- `tsc --noEmit` — 0 errors
+- Backend: 190/190 tests passing
+- Manual: user tested full flow in browser — loading animation → auto-redirect to interview confirmed
+
+---
+
 ### 2026-02-27 — T38 (M7): Tela de Boas-Vindas
 
 **Status**: done
