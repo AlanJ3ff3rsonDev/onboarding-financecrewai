@@ -18,9 +18,31 @@
 
 ## Active & Pending Tasks
 
+### T37.5: Setup + Infraestrutura do Onboarding (M7)
+
+**Dependencies**: T37 (backend deploy) — DONE
+
+**Definition of Done**:
+- Branch `feat/onboarding` criada no repo `crew-ai-dashboard`
+- Env vars adicionadas: `VITE_ONBOARDING_API_URL`, `VITE_ONBOARDING_API_KEY`
+- Feature flag `"onboarding"` adicionada ao FeatureFlagContext (default: false)
+- `hideLayout` pattern estendido no App.tsx para rotas `/onboarding`
+- API client criado (`src/features/onboarding/api/client.ts`) com X-API-Key header
+- TypeScript types criados (`src/features/onboarding/api/types.ts`) espelhando schemas do backend
+- API function files criados (sessions, enrichment, interview, audio, agent, simulation)
+- OnboardingContext criado com session recovery logic
+- OnboardingLayout + StepIndicator criados
+- Rotas `/onboarding/*` adicionadas ao App.tsx (condicionais ao feature flag)
+- Chaves i18n base adicionadas ao `pt-BR.json`
+- Feature flag OFF = plataforma funciona exatamente como antes
+
+**Status**: `done`
+
+---
+
 ### T38: Tela de boas-vindas (M7)
 
-**Dependencies**: T37 (backend deploy)
+**Dependencies**: T37.5
 
 **Definition of Done**:
 - Screen with fields: company name (required), website (required), CNPJ (optional)
@@ -35,7 +57,7 @@
 
 ### T39: Tela de enriquecimento (M7)
 
-**Dependencies**: T38
+**Dependencies**: T37.5, T38
 
 **Definition of Done**:
 - Calls `POST /sessions/{id}/enrich` on mount

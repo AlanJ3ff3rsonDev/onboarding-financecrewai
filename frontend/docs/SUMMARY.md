@@ -4,17 +4,28 @@
 
 ## Current State
 
-- **Backend**: M0-M5.9 complete (API ready). M6 deploy in progress (T36-T37).
-- **Frontend**: Pending — depends on backend deploy (T37)
-- **Stack**: Lovable (React/TypeScript) at `portal.financecrew.ai`
+- **Backend**: M0-M6 complete. Deployed at `onboarding-financecrewai-production.up.railway.app`
+- **Frontend**: In progress — building on branch `feat/onboarding` in `crew-ai-dashboard` repo
+- **Completed**: T37.5 (Setup + infra) — branch `feat/onboarding`, API client, types, context, layout, routes, i18n
+- **Next task**: T38 (Tela de boas-vindas)
+
+## Platform Stack (crew-ai-dashboard)
+
+- **Stack**: React 18 + TypeScript + Vite 5 + Tailwind CSS 3 + shadcn/ui (51 components)
+- **Auth**: Directus SDK (cookie sessions, auto-refresh)
+- **State**: React Context (Auth, Company, FeatureFlags) + TanStack Query
+- **i18n**: react-i18next (PT-BR, EN, ES)
+- **Routing**: React Router DOM v6, routes in `src/App.tsx`
+- **Design**: Primary color HSL(84 100% 51%) (verde-limao), dark mode, border-radius 0.75rem
+- **Repo**: `financecrew/crew-ai-dashboard` (private, GitHub Sync with Lovable)
 
 ## Architecture (5-line summary)
 
 - **6 screens**: Boas-vindas → Enriquecimento → Entrevista → Revisao → Relatorio SOP → Simulacao
-- **Backend API**: FastAPI at `{BACKEND_URL}/api/v1` — all endpoints synchronous (no WebSocket)
-- **State**: Frontend only tracks `session_id` + `current_question` + `phase` + `progress`. All answers persisted server-side.
+- **Onboarding API**: FastAPI at `onboarding-financecrewai-production.up.railway.app/api/v1` (separate from Directus)
+- **State**: Frontend only tracks `session_id` (localStorage) + component state. All answers persisted server-side.
+- **Feature flag**: `onboarding` flag in FeatureFlagContext controls redirect. `hideLayout` pattern for fullscreen (no sidebar).
 - **Audio**: Optional voice input via MediaRecorder API → backend transcription
-- **Integration**: Onboarding runs before first agent creation. Results eventually saved to Directus (M8, future).
 
 ## Section Index — Where to Find What
 
@@ -30,7 +41,9 @@
 | **Audio implementation** | `tech_design.md` → Section 4 (Audio) |
 | **State management** | `tech_design.md` → Section 5 (Frontend State) |
 | **Screen flow diagram** | `tech_design.md` → Section 6 (Screen Flow) |
-| **Backend Swagger UI** | `{BACKEND_URL}/docs` |
+| **Onboarding macro (3 fases)** | `../../docs/PRD_ONBOARDING_MACRO.md` |
+| **Platform integration details** | `tech_design.md` → Section 7 (Platform Integration) |
+| **Backend Swagger UI** | `https://onboarding-financecrewai-production.up.railway.app/docs` (dev only) |
 
 ## Core Questions (quick reference)
 
