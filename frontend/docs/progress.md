@@ -21,6 +21,8 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 | 2026-02-28 | Report not shown to user | Client doesn't need to see the report — it's only used by backend for simulation. Report screen is just a loading transition that auto-navigates to simulation | Removed report cards/CTA from T41, simplified to loading-only |
 | 2026-02-28 | Step indicator: only interactive screens count | Loading/transition screens (enrichment, report) shouldn't be steps — user thinks there are more steps than there are. Only 3 real steps: Dados, Entrevista, Simulação | Reduced from 6→5→3 steps |
 | 2026-02-28 | Tailwind arbitrary HSL + opacity doesn't work | `border-[hsl(84_100%_35%)]/20` generates no CSS — Tailwind can't combine arbitrary values with opacity modifier. Must use CSS variable + tailwind config instead | Added `--primary-dark` CSS var + `primary.dark` in tailwind.config.ts → use `bg-primary-dark/10` |
+| 2026-02-28 | Simulation: no Outcome/Metrics in UI | User sees only debtor profile + chat conversation. Resolution type, discount %, installments are internal metadata — showing them adds no value and can confuse | Removed Outcome card + Metrics badges from SimulationScenarioCard |
+| 2026-02-28 | Simulation prompt: only mention benefits proactively | Discounts/installments: mention if offered (benefit to client), never say "we don't offer" unprompted. Fines/interest: mention if NOT charged (benefit to client), never bring up if charged. WhatsApp-based collection, payment links via WhatsApp not email | Updated SYSTEM_PROMPT + scenario instructions in backend simulation.py |
 
 ---
 
@@ -32,6 +34,41 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 ---
 
 ## Development Log
+
+### 2026-02-28 — T42 (M7): Tela de Simulação
+
+**Status**: done
+
+**What was done**:
+- Fixed `simulation.ts`: POST path `/simulate` → `/simulation/generate`, GET return type `GenerateSimulationResponse` → `SimulationResult`
+- Created `ChatBubble.tsx`: WhatsApp-style bubbles — agent left (white #FFF), debtor right (light green #D9FDD3), role label above, shadow-sm
+- Created `SimulationScenarioCard.tsx`: debtor profile banner + ScrollArea chat (h-[400px]) with WhatsApp background
+- Created `whatsapp-bg.svg`: tiled doodle pattern (15 icons: chat, clock, phone, smiley, etc.) at 30% opacity on beige #ECE5DD
+- Rewrote `OnboardingSimulation.tsx` (~300 lines): 3-phase state machine (loading/error/ready)
+  - Loading: same hub animation as report/enrichment (MessageSquareText → Users → MessagesSquare → BarChart3), step dots, progress bar, primary-dark color
+  - Ready: Tabs (Cooperativo/Resistente), SimulationScenarioCard per tab, Aprovar + Regenerar buttons
+  - Session recovery: `generated` → POST generate; `simulating` → poll; `completed` → GET results
+  - Aprovar: `clearSession()` + `navigate("/")` (no API call)
+  - Regenerar: POST again, toast feedback, keeps old results visible until replaced
+- Added `onboarding.simulation.*` i18n keys (~25 keys) to pt-BR, en, es
+
+**Post-review changes** (user feedback):
+- Removed Outcome card and Metrics badges from `SimulationScenarioCard.tsx` — user doesn't need to see resolution/discount/installments metadata
+- Removed unused i18n keys (outcome, metrics, resolution*, discount, installments, paymentMethod) from all 3 locale files
+- Updated backend simulation prompt (`backend/app/prompts/simulation.py`):
+  - Added WhatsApp collection context (payment links via WhatsApp, not email)
+  - Added policy mention rules: only proactively mention things that BENEFIT the client
+  - Discounts/installments: only mention if company offers them; never say "we don't offer X" unprompted
+  - Fines/interest: only mention if company does NOT charge (it's a benefit); if they charge, don't bring up unless asked
+  - Updated scenario instructions to reinforce these rules
+
+**Tests**:
+- `tsc --noEmit` — 0 errors
+- Backend: 12/12 simulation tests passing
+- Dev server: simulation route loads (200)
+- Pending: manual browser test with real backend session
+
+---
 
 ### 2026-02-28 — T41 (M7): Tela do Relatório (loading-only)
 

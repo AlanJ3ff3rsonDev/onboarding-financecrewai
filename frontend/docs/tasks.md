@@ -127,7 +127,7 @@
 - "Regenerar" button triggers new simulation
 - After approval: redirect to platform dashboard
 
-**Status**: `pending`
+**Status**: `done`
 
 ---
 

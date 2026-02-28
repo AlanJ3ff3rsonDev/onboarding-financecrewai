@@ -6,8 +6,8 @@
 
 - **Backend**: M0-M6 complete. Deployed at `onboarding-financecrewai-production.up.railway.app`
 - **Frontend**: In progress — building on branch `feat/onboarding` in `crew-ai-dashboard` repo
-- **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas), T39 (Tela de enriquecimento), T40 (Tela de entrevista)
-- **Next task**: T41 (Tela do relatorio resumido)
+- **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas), T39 (Tela de enriquecimento), T40 (Tela de entrevista), T41 (Tela do relatório), T42 (Tela de simulação)
+- **Next task**: T43 (Integração de fluxo completo)
 - **Change**: Review screen removed (was T41). Report simplified to bullet-point cards. Tasks renumbered: T41=Report, T42=Simulação, T43=Integração
 
 ## Platform Stack (crew-ai-dashboard)
