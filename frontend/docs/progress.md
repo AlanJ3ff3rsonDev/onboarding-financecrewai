@@ -16,6 +16,11 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 | 2026-02-27 | Canvas-based audio visualizer (not React DOM) | Using `setState` at 60fps for div-based bars caused React batching — bars filled/dropped "all at once". Canvas with direct 2D context draws every frame smoothly | Audio visualizer must use `<canvas>` + `requestAnimationFrame`, never React state for per-frame updates |
 | 2026-02-27 | Skip sends `"-"` (not empty string) | Backend `SubmitAnswerRequest.answer` has `min_length=1` — empty string `""` returns 422. Dash is a sentinel value for "no answer" | All non-required questions auto-fill `"-"` if submitted empty |
 | 2026-02-27 | Audio transcription appends, not replaces | User records multiple segments — each transcription should add to existing text, not overwrite | `setAnswer(prev => prev ? prev + " " + text : text)` |
+| 2026-02-28 | Review screen removed, report simplified | Review screen added friction without value (forward-only, read-only, user just answered everything). Report simplified from full SOP with collapsible sections to scannable bullet-point cards. Interview auto-confirms via `POST /interview/review` (no UI). Tasks renumbered: T41=Report, T42=Simulação, T43=Integração | 5 screens instead of 6. T41 DoD completely rewritten. PRD, tech_design, tasks.md, SUMMARY.md all updated |
+| 2026-02-28 | Loading animations: darker green for contrast | Primary verde-limão `hsl(84 100% 51%)` is too light on white background — icons/ring/progress barely visible. Use darker green `hsl(84 100% 35%)` for loading animation elements. Apply to both enrichment (existing) and report (new) screens | T41: implement + backport to enrichment screen |
+| 2026-02-28 | Report not shown to user | Client doesn't need to see the report — it's only used by backend for simulation. Report screen is just a loading transition that auto-navigates to simulation | Removed report cards/CTA from T41, simplified to loading-only |
+| 2026-02-28 | Step indicator: only interactive screens count | Loading/transition screens (enrichment, report) shouldn't be steps — user thinks there are more steps than there are. Only 3 real steps: Dados, Entrevista, Simulação | Reduced from 6→5→3 steps |
+| 2026-02-28 | Tailwind arbitrary HSL + opacity doesn't work | `border-[hsl(84_100%_35%)]/20` generates no CSS — Tailwind can't combine arbitrary values with opacity modifier. Must use CSS variable + tailwind config instead | Added `--primary-dark` CSS var + `primary.dark` in tailwind.config.ts → use `bg-primary-dark/10` |
 
 ---
 
@@ -27,6 +32,42 @@ Log every task here. Entry format: date, task ID, status, what was done, tests, 
 ---
 
 ## Development Log
+
+### 2026-02-28 — T41 (M7): Tela do Relatório (loading-only)
+
+**Status**: done
+
+**What was done**:
+- Built `OnboardingReport.tsx`: auto-confirms review, generates report, navigates to simulation
+- State machine: `loading` | `error` (no "ready" phase — report not shown to user)
+- Mount logic: `interviewed` → confirmReview + generateReport → navigate to simulation; `generating` → poll; `generated` → navigate
+- Loading animation: same hub pattern as enrichment (cycling icons, step dots, progress bar)
+- Darker green (`primary-dark` via CSS variable) for all loading animations (report + enrichment backport)
+- Added `--primary-dark: 84 100% 35%` to `index.css` + `primary.dark` to `tailwind.config.ts`
+- Step indicator: reduced to 3 steps (Dados, Entrevista, Simulação) — loading screens are transitions, not steps
+- Bug fixes: `agent.ts` endpoint paths (missing `/agent/` segment), `STATUS_ROUTE_MAP` (`interviewed` → `/report`), interview navigation target
+- Removed unused review step from `StepIndicator.tsx`
+- Added `onboarding.report.*` i18n keys (loading steps, subtitle, error) to pt-BR, en, es
+- Created `docs/DEV_ENVIRONMENT.md` — env setup reference for new devs
+
+**Tests**:
+- `tsc --noEmit` — 0 errors
+- Manual: loading animation plays, report generates, navigates to simulation stub
+
+**Bugs found & fixed**:
+- `agent.ts` had wrong paths: `/sessions/{id}/generate` → `/sessions/{id}/agent/generate` (same for GET/PUT)
+- Tailwind `border-[hsl(84_100%_35%)]/20` doesn't generate CSS — arbitrary values don't combine with opacity modifier. Fixed by using CSS variable + tailwind config
+- `.env.local` was pointing to `localhost:8000` (backend not running) — restored to Railway URL
+- Railway `ALLOWED_ORIGINS` env var was missing `http://localhost:8080` — added
+- Railway `API_KEY` value had changed — updated `.env.local`
+
+**Environment lessons** (added to `DEV_ENVIRONMENT.md` + `CLAUDE.md`):
+- Never run `vite build` while dev server is running — use `tsc --noEmit`
+- Never change `.env.local` — must always point to Railway
+- Always check if dev server is already running before starting
+- Railway env vars (`API_KEY`, `ALLOWED_ORIGINS`) are the source of truth for API access
+
+---
 
 ### 2026-02-27 — T40 (M7): Tela de Entrevista
 

@@ -4,7 +4,7 @@
 
 CollectAI's self-service onboarding lets a client enter their website, answer structured questions (text or audio), and receive a complete onboarding report (SOP) for their collection agent.
 
-The **backend API** is complete — it handles enrichment, interview, report generation, and simulation. The frontend is a set of 6 screens that guide the user through this flow.
+The **backend API** is complete — it handles enrichment, interview, report generation, and simulation. The frontend is a set of 5 screens that guide the user through this flow.
 
 **Trigger**: First login on `portal.financecrew.ai` — before the user can create their first collection agent, they must complete the onboarding wizard.
 
@@ -107,51 +107,38 @@ The **backend API** is complete — it handles enrichment, interview, report gen
 - `context_hint` displayed as helper text when present
 - `is_required` determines if "Pular" (skip) button is shown
 - Show follow-up questions inline after the parent question
-- When `next_question` is null, navigate to Screen 4
+- When `next_question` is null, auto-confirm review (see Screen 4 note) and navigate to Screen 4
 
 ---
 
-### Screen 4: Revisao
+### Screen 4: Relatorio Resumido
 
-**Purpose**: Show summary of all answers for user review before generating the report.
+**Purpose**: Quick visual summary of the generated onboarding report. User scans key bullet points — not a document to read.
 
 **API calls**:
-1. `GET /api/v1/sessions/{id}/interview/review` — get summary
-2. `POST /api/v1/sessions/{id}/interview/review` — confirm (with optional `additional_notes`)
+1. Auto-confirm interview: `POST /api/v1/sessions/{id}/interview/review` (no UI — called automatically when arriving from interview)
+2. `POST /api/v1/sessions/{id}/agent/generate` — generate report (~15s)
+3. `GET /api/v1/sessions/{id}/agent` — get OnboardingReport (fallback)
+
+**Display**: 3-4 compact cards with bullet points extracted from OnboardingReport:
+- **Tom de comunicacao** — tone_style + brand_specific_language (1-2 lines)
+- **Politicas de cobranca** — discount, installment, interest, penalty (bullet list, max 4-5 items)
+- **Guardrails** — never_do + never_say (bullet list)
+- **Recomendacao do especialista** — 2-3 sentence summary (NOT the full 300+ word analysis)
 
 **UX**:
-- Display all Q&A pairs in a readable list
-- Optional "Notas adicionais" text area
-- "Confirmar e gerar relatorio" button
-- Read-only — user cannot edit individual answers (forward-only flow)
+- Loading state with animation during generation (~15s)
+- Scannable at a glance — no collapsible sections, no long text
+- "Tudo certo? Veja seu agente em acao →" button to proceed to simulation
+- No editing — read-only summary
+
+> **Note**: The review screen was removed (v1 had a separate Screen 4 showing all Q&A pairs). The interview auto-confirms via API when transitioning to this screen. The backend `POST /interview/review` is still called, but without user interaction.
 
 ---
 
-### Screen 5: Relatorio SOP
+### Screen 5: Simulacao
 
-**Purpose**: Display the generated onboarding report (expert analysis + policies).
-
-**API calls**:
-1. `POST /api/v1/sessions/{id}/agent/generate` — generate report (~15s)
-2. `GET /api/v1/sessions/{id}/agent` — get OnboardingReport
-
-**Display sections**:
-- **Recomendacoes do Especialista** (`expert_recommendations`): 300+ word analysis — main highlight
-- **Perfil de Cobranca** (`collection_profile`): debt type, debtor profile, objections, sector regulations
-- **Politicas** (`collection_policies`): overdue, discount, installment, interest, penalty policies
-- **Comunicacao** (`communication`): tone, prohibited actions, brand language
-- **Guardrails** (`guardrails`): never do/say, identification, follow-up rules
-
-**UX**:
-- Loading state during generation (~15s)
-- Structured display with collapsible sections
-- "Continuar para simulacao" button
-
----
-
-### Screen 6: Simulacao
-
-**Purpose**: Show 2 simulated collection conversations as proof of agent quality.
+**Purpose**: Show 2 simulated collection conversations as proof of agent quality. This is the "wow moment" — the client sees their agent in action.
 
 **API calls**:
 1. `POST /api/v1/sessions/{id}/simulation/generate` — generate simulations (~20s)
@@ -161,13 +148,13 @@ The **backend API** is complete — it handles enrichment, interview, report gen
 - Two tabs or side-by-side panels:
   - **Cooperativo**: debtor who wants to pay
   - **Resistente**: debtor who pushes back
-- Each conversation as a chat interface (agent messages vs debtor messages)
+- Each conversation as a WhatsApp-style chat interface (agent messages vs debtor messages)
 - Show debtor profile above each conversation
 - Show outcome and metrics below each conversation
 
 **UX**:
 - Loading state during generation (~20s)
-- Chat-bubble style for messages
+- Chat-bubble style for messages (WhatsApp look & feel)
 - "Aprovar" button to complete onboarding
 - "Regenerar" button to generate new simulations (POST again)
 - After approval: onboarding is complete, redirect to platform dashboard
@@ -180,7 +167,7 @@ The **backend API** is complete — it handles enrichment, interview, report gen
 |-------------|---------|
 | **Language** | All UI text in Portuguese (PT-BR) |
 | **Progress indicator** | Visible during interview (Screen 3) |
-| **Loading states** | Required for: enrichment (~15s), report generation (~15s), simulation (~20s) |
+| **Loading states** | Required for: enrichment (~15s), report generation (~15s), simulation (~20s). Report screen has animated loading. |
 | **Audio support** | MediaRecorder API for voice answers on text questions |
 | **Navigation** | Forward-only during interview. No browser back button handling needed for MVP. |
 | **Responsive** | Mobile-friendly — many SMB owners use mobile |

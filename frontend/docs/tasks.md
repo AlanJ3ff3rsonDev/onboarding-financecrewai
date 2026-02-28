@@ -11,7 +11,7 @@
 
 | Milestone | Description | Tasks | Status |
 |-----------|-------------|-------|--------|
-| **M7** | Frontend Onboarding (Lovable) | T38-T44 | Pending |
+| **M7** | Frontend Onboarding (Lovable) | T38-T43 | Pending |
 | **M8** | Integracao Directus | T45 | Future |
 
 ---
@@ -91,42 +91,36 @@
 
 ---
 
-### T41: Tela de revisao da entrevista (M7)
+### T41: Tela do relatorio resumido (M7)
 
 **Dependencies**: T40
 
-**Definition of Done**:
-- Calls `GET /sessions/{id}/interview/review` on mount
-- Displays all Q&A pairs in readable format
-- Optional "Notas adicionais" text area
-- "Confirmar e gerar relatorio" button calls `POST /interview/review`
-- Navigates to report screen after confirmation
+> **Note**: T41 was originally "Tela de revisão da entrevista" — removed. Review screen cut for UX simplification. Interview auto-confirms via `POST /interview/review` (no user interaction). Old T42 (report) renumbered to T41, simplified from full SOP display to scannable bullet-point cards.
 
-**Status**: `pending`
+**Definition of Done**:
+- Auto-confirms interview on mount: `POST /sessions/{id}/interview/review` (no UI)
+- Calls `POST /sessions/{id}/agent/generate` (~15s loading with animation)
+- Report NOT shown to user — auto-navigates to simulation when done
+- Loading state with animation during generation (cycling icons, step dots, progress bar)
+- Session recovery: handles `interviewed`, `generating`, `generated` statuses
+- Error phase with retry button
+- **Visual fix**: Loading animations use `primary-dark` (`hsl(84 100% 35%)`) — also backported to enrichment
+- **Step indicator**: Reduced to 3 steps (Dados, Entrevista, Simulação) — loading screens don't count
+- **Bug fixes**: agent.ts endpoint paths, STATUS_ROUTE_MAP, interview navigation target
+
+**Status**: `done`
 
 ---
 
-### T42: Tela do relatorio SOP (M7)
+### T42: Tela de simulacao (M7)
 
 **Dependencies**: T41
 
-**Definition of Done**:
-- Calls `POST /sessions/{id}/agent/generate` on mount (~15s loading)
-- Displays OnboardingReport sections: expert_recommendations, collection_profile, collection_policies, communication, guardrails
-- Structured layout with collapsible or tabbed sections
-- "Continuar para simulacao" button
-
-**Status**: `pending`
-
----
-
-### T43: Tela de simulacao (M7)
-
-**Dependencies**: T42
+> **Note**: Was T43, renumbered after review screen removal.
 
 **Definition of Done**:
 - Calls `POST /sessions/{id}/simulation/generate` on mount (~20s loading)
-- Displays 2 conversations (cooperative + resistant) as chat bubbles
+- Displays 2 conversations (cooperative + resistant) as WhatsApp-style chat bubbles
 - Shows debtor profile above each conversation
 - Shows outcome and metrics below
 - "Aprovar" button completes onboarding
@@ -137,12 +131,14 @@
 
 ---
 
-### T44: Integracao de fluxo completo (M7)
+### T43: Integracao de fluxo completo (M7)
 
-**Dependencies**: T43
+**Dependencies**: T42
+
+> **Note**: Was T44, renumbered after review screen removal.
 
 **Definition of Done**:
-- All 6 screens connected end-to-end
+- All 5 screens connected end-to-end
 - Session recovery works (refresh/return to correct screen based on status)
 - Error handling on all API calls (user-friendly messages, retry options)
 - Loading states on all slow operations
@@ -160,7 +156,7 @@
 
 ### T45: Salvar OnboardingReport no Directus
 
-**Dependencies**: T44
+**Dependencies**: T43
 
 **Definition of Done**:
 - OnboardingReport mapped to Directus "agents" collection

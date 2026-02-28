@@ -291,8 +291,8 @@ No dynamic questions phase in current version.
    - `multiselect` → `<Checkbox>` per option, answer = comma-separated values
 3. User submits answer → `POST /interview/answer`
 4. Response contains `next_question` — display it
-5. If `next_question` is null → `setStatus("interviewed")`, navigate to review screen
-6. Check `phase` field: when `"review"`, interview is done
+5. If `next_question` is null → auto-call `POST /interview/review` (no UI), then `setStatus("interviewed")`, navigate to report screen
+6. Check `phase` field: when `"review"`, interview is done — auto-confirm and move to report
 
 ### Frontend Rules (learned in T40)
 
@@ -352,7 +352,7 @@ Voice input is an alternative to typing for text questions.
 | `current_question` | API response (`next_question`) | Component state |
 | `phase` | API response | Component state |
 | `progress` | `GET /interview/progress` | Component state |
-| `current_screen` | Navigation | URL or state (1-6) |
+| `current_screen` | Navigation | URL or state (1-5) |
 
 ### What NOT to Track
 
@@ -366,12 +366,12 @@ If the user refreshes or returns:
 1. Check localStorage for `session_id`
 2. `GET /sessions/{id}` to check `status`
 3. Based on status, navigate to the appropriate screen:
-   - `created` → Screen 1 or 2
-   - `enriched` → Screen 3
-   - `interviewing` → Screen 3 (call `GET /interview/next`)
-   - `interviewed` → Screen 4
-   - `generated` → Screen 5
-   - `completed` → Screen 6
+   - `created` → Screen 1 or 2 (Boas-vindas / Enriquecimento)
+   - `enriched` → Screen 3 (Entrevista)
+   - `interviewing` → Screen 3 (Entrevista — call `GET /interview/next`)
+   - `interviewed` → Screen 4 (Relatorio — auto-confirm review first)
+   - `generated` → Screen 4 (Relatorio — show results)
+   - `completed` → Screen 5 (Simulacao)
 
 ---
 
@@ -385,25 +385,20 @@ Screen 1: Boas-vindas
 Screen 2: Enriquecimento
   |
   | POST /sessions/{id}/enrich (loading ~15s)
-  | GET /sessions/{id}/enrichment
   v
 Screen 3: Entrevista
   |
   | GET /sessions/{id}/interview/next
   | POST /sessions/{id}/interview/answer (loop)
   | GET /sessions/{id}/interview/progress (for progress bar)
-  v
-Screen 4: Revisao
   |
-  | GET /sessions/{id}/interview/review
-  | POST /sessions/{id}/interview/review (confirm)
+  | (auto-confirm: POST /interview/review — no UI)
   v
-Screen 5: Relatorio SOP
+Screen 4: Relatorio Resumido
   |
   | POST /sessions/{id}/agent/generate (loading ~15s)
-  | GET /sessions/{id}/agent
   v
-Screen 6: Simulacao
+Screen 5: Simulacao
   |
   | POST /sessions/{id}/simulation/generate (loading ~20s)
   | GET /sessions/{id}/simulation
@@ -418,10 +413,9 @@ Screen 6: Simulacao
 |--------|----------|-------------------|
 | 1 | POST /sessions | < 1s |
 | 2 | POST /enrich | ~15s |
-| 3 | GET /next, POST /answer | < 2s each |
-| 4 | GET /review, POST /review | < 1s |
-| 5 | POST /agent/generate | ~15s |
-| 6 | POST /simulation/generate | ~20s |
+| 3 | GET /next, POST /answer, POST /review (auto) | < 2s each |
+| 4 | POST /agent/generate | ~15s |
+| 5 | POST /simulation/generate | ~20s |
 
 ---
 
@@ -472,7 +466,6 @@ Routes are defined in `src/App.tsx` inside `<Routes>`. Add onboarding routes con
     <Route path="/onboarding" element={<OnboardingWelcome />} />
     <Route path="/onboarding/enrichment" element={<OnboardingEnrichment />} />
     <Route path="/onboarding/interview" element={<OnboardingInterview />} />
-    <Route path="/onboarding/review" element={<OnboardingReview />} />
     <Route path="/onboarding/report" element={<OnboardingReport />} />
     <Route path="/onboarding/simulation" element={<OnboardingSimulation />} />
     <Route path="/onboarding/complete" element={<OnboardingComplete />} />
@@ -517,7 +510,6 @@ Add onboarding translation keys to `src/i18n/locales/pt-BR.json` (and en.json, e
     "welcome": { "title": "...", "subtitle": "...", ... },
     "enrichment": { ... },
     "interview": { ... },
-    "review": { ... },
     "report": { ... },
     "simulation": { ... }
   }
@@ -537,7 +529,7 @@ src/
       api/          # API client + typed functions for onboarding backend
       components/   # OnboardingLayout, StepIndicator, QuestionCard, etc.
       hooks/        # useOnboardingSession, useInterview, useAudioRecording
-      pages/        # One page per screen (7 files)
+      pages/        # One page per screen (6 files — welcome, enrichment, interview, report, simulation, complete)
       context/      # OnboardingContext (session state)
 ```
 

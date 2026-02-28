@@ -13,7 +13,8 @@ CollectAI self-service onboarding frontend: 6 screens that guide a client throug
 
 | File | Purpose |
 |------|---------|
-| `docs/SUMMARY.md` | **Read FIRST** — project state, architecture summary, section index |
+| `docs/DEV_ENVIRONMENT.md` | **Read on first session** — env vars, Railway config, common errors, DO NOT rules |
+| `docs/SUMMARY.md` | **Read FIRST every task** — project state, architecture summary, section index |
 | `docs/PRD.md` | Screen definitions, UX requirements, platform architecture |
 | `docs/tech_design.md` | **Most important** — API endpoints, JSON schemas, interview flow, audio, platform integration |
 | `docs/tasks.md` | Task details — pending tasks with full definitions |
@@ -24,11 +25,30 @@ CollectAI self-service onboarding frontend: 6 screens that guide a client throug
 
 Every session, follow this exact order:
 
+### 0. Pre-flight checks (MANDATORY, before ANY code changes)
+
+**Full reference**: `docs/DEV_ENVIRONMENT.md` — env vars, Railway config, error troubleshooting.
+
+```bash
+# 1. Is dev server already running? (DO NOT start/restart if 200)
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8080
+
+# 2. Is .env.local pointing to Railway? (DO NOT change it)
+cat ../../crew-ai-dashboard/.env.local
+```
+
+**CRITICAL — things that BREAK the app if you do them**:
+- `vite build` while dev server is running → interferes with HMR. Use `tsc --noEmit` instead.
+- Changing `.env.local` → causes "failed fetch". Must always point to Railway.
+- Starting dev server when it's already running → port conflicts.
+- If CORS or API key errors appear → see `docs/DEV_ENVIRONMENT.md` troubleshooting section.
+
+### 1-7. Development steps
 1. **Read `docs/SUMMARY.md` FIRST** — project state, what's next, architecture overview
 2. **Read the next pending task** in `docs/tasks.md`
 3. **Read specific sections** of `tech_design.md` or `PRD.md` via the section index in SUMMARY.md
 4. **Implement** in the platform repo (`crew-ai-dashboard/`, branch `feat/onboarding`)
-5. **Test** — verify against real backend API (not mocked)
+5. **Test** — `tsc --noEmit` for types, then verify in browser against real backend API (not mocked)
 6. **Log result** in `docs/progress.md`
 7. **Mark `done`** in tasks.md
 

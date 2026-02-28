@@ -7,7 +7,8 @@
 - **Backend**: M0-M6 complete. Deployed at `onboarding-financecrewai-production.up.railway.app`
 - **Frontend**: In progress — building on branch `feat/onboarding` in `crew-ai-dashboard` repo
 - **Completed**: T37.5 (Setup + infra), T38 (Tela de boas-vindas), T39 (Tela de enriquecimento), T40 (Tela de entrevista)
-- **Next task**: T41 (Tela de revisao da entrevista)
+- **Next task**: T41 (Tela do relatorio resumido)
+- **Change**: Review screen removed (was T41). Report simplified to bullet-point cards. Tasks renumbered: T41=Report, T42=Simulação, T43=Integração
 
 ## Platform Stack (crew-ai-dashboard)
 
@@ -21,7 +22,7 @@
 
 ## Architecture (5-line summary)
 
-- **6 screens**: Boas-vindas → Enriquecimento → Entrevista → Revisao → Relatorio SOP → Simulacao
+- **5 screens**: Boas-vindas → Enriquecimento → Entrevista → Relatorio Resumido → Simulacao
 - **Onboarding API**: FastAPI at `onboarding-financecrewai-production.up.railway.app/api/v1` (separate from Directus)
 - **State**: Frontend only tracks `session_id` (localStorage) + component state. All answers persisted server-side.
 - **Feature flag**: `onboarding` flag in FeatureFlagContext controls redirect. `hideLayout` pattern for fullscreen (no sidebar).
